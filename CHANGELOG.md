@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.13
+
+- Interaction: LMB pans only on empty space; overlay text selection never pans.
+
 ## v0.1.12
 
 - Interaction: restore LMB canvas panning; selecting overlay text won’t pan.

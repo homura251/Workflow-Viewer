@@ -991,6 +991,14 @@ function getNodeUnderPointer(event: PointerEvent) {
   return typeof graphAny.getNodeOnPos === 'function' ? graphAny.getNodeOnPos(pos[0], pos[1]) : null
 }
 
+function getGroupUnderPointer(event: PointerEvent) {
+  const canvasAny = canvas as any
+  const graphAny = graph as any
+  if (typeof canvasAny.convertEventToCanvasOffset !== 'function') return null
+  const pos: [number, number] = canvasAny.convertEventToCanvasOffset(event)
+  return typeof graphAny.getGroupOnPos === 'function' ? graphAny.getGroupOnPos(pos[0], pos[1]) : null
+}
+
 function isNodeSelected(node: any) {
   return Boolean(node && (canvas as any).selected_nodes && (canvas as any).selected_nodes[node.id])
 }
@@ -1117,7 +1125,8 @@ canvasEl.addEventListener(
 
 // LMB drag behavior:
 // - Drag node(s) only when the node is already selected and the drag starts from its title bar
-// - Otherwise, drag pans the canvas (except when selecting text in the overlay)
+// - Dragging empty space pans the canvas
+// - Dragging on node body does not pan (so it won't fight with text overlay)
 canvasEl.addEventListener(
   'pointerdown',
   (event) => {
@@ -1126,8 +1135,10 @@ canvasEl.addEventListener(
     if (activeDrag) return
 
     const node = getNodeUnderPointer(event)
-    const mode: 'pan' | 'node' = node && isNodeSelected(node) && isInNodeTitleBar(node, event) ? 'node' : 'pan'
-    dragCandidate = { mode, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY }
+    const group = node ? null : getGroupUnderPointer(event)
+    const mode: 'pan' | 'node' | null =
+      node && isNodeSelected(node) && isInNodeTitleBar(node, event) ? 'node' : !node && !group ? 'pan' : null
+    dragCandidate = mode ? { mode, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY } : null
   },
   true
 )
