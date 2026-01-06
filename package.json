@@ -1,0 +1,56 @@
+{
+  "name": "comfyui-workflow-viewer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A lightweight desktop viewer for ComfyUI workflow JSON/PNG without running ComfyUI backend.",
+  "author": "",
+  "license": "UNLICENSED",
+  "main": "dist/main/index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "dist": "electron-vite build && electron-builder --publish never",
+    "pack:win": "set \"http_proxy=\" && set \"HTTP_PROXY=\" && set \"https_proxy=\" && set \"HTTPS_PROXY=\" && electron-vite build && electron-packager . \"ComfyUI Workflow Viewer\" --platform=win32 --arch=x64 --out=release --overwrite --asar --prune=true"
+  },
+  "dependencies": {
+    "litegraph.js": "^0.7.18"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.7",
+    "@electron/packager": "^18.3.6",
+    "electron": "^30.0.9",
+    "electron-builder": "^24.13.3",
+    "electron-vite": "^2.1.0",
+    "typescript": "^5.6.3"
+  },
+  "build": {
+    "appId": "comfyui.workflow.viewer",
+    "productName": "ComfyUI Workflow Viewer",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**",
+      "package.json"
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ]
+    }
+  }
+}
