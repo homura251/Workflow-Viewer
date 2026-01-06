@@ -31,7 +31,13 @@
           </div>
         </section>
         <aside class="sidebar">
-          <div class="sidebar-title">Selection</div>
+          <div class="sidebar-title">
+            <span>Selection</span>
+            <span class="sidebar-actions">
+              <button id="copy-selection-btn" class="btn btn-small" title="Copy sidebar JSON (Ctrl+C)">Copy JSON</button>
+              <button id="copy-params-btn" class="btn btn-small" title="Copy node parameters">Copy Params</button>
+            </span>
+          </div>
           <pre id="details" class="details">(none)</pre>
         </aside>
       </main>

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, shell } from 'electron'
 import { readFile } from 'node:fs/promises'
 import { extname } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -272,6 +272,11 @@ app.whenReady().then(async () => {
 
   ipcMain.handle('workflow:read-file', async (_event, sourcePath: string) => {
     return loadWorkflowFromFile(sourcePath)
+  })
+
+  ipcMain.handle('clipboard:write-text', async (_event, text: string) => {
+    clipboard.writeText(String(text ?? ''))
+    return true
   })
 
   app.on('activate', async () => {

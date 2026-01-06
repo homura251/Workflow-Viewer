@@ -26,6 +26,8 @@ const openBtn = document.getElementById('open-btn') as HTMLButtonElement
 const fitBtn = document.getElementById('fit-btn') as HTMLButtonElement
 const resetBtn = document.getElementById('reset-btn') as HTMLButtonElement
 const toggleSidebarBtn = document.getElementById('toggle-sidebar-btn') as HTMLButtonElement
+const copySelectionBtn = document.getElementById('copy-selection-btn') as HTMLButtonElement
+const copyParamsBtn = document.getElementById('copy-params-btn') as HTMLButtonElement
 const tabsEl = document.getElementById('tabs')!
 const dropTarget = document.getElementById('drop-target')!
 const canvasEl = document.getElementById('graph-canvas') as HTMLCanvasElement
@@ -34,19 +36,19 @@ const mainLayoutEl = document.querySelector('.main') as HTMLElement
 type Rgb = { r: number; g: number; b: number }
 
 const BASE_TYPE_COLORS: Record<string, string> = {
-  MODEL: '#89b4fa',
-  CLIP: '#cba6f7',
-  VAE: '#f38ba8',
-  IMAGE: '#a6e3a1',
-  LATENT: '#f9e2af',
-  CONDITIONING: '#fab387',
-  MASK: '#74c7ec',
-  CONTROL_NET: '#eba0ac',
-  INT: '#89dceb',
-  FLOAT: '#94e2d5',
-  STRING: '#f5c2e7',
-  BOOLEAN: '#b4befe',
-  ANY: '#cdd6f4'
+  MODEL: '#58a6ff',
+  CLIP: '#a371f7',
+  VAE: '#ff7b72',
+  IMAGE: '#56d364',
+  LATENT: '#d29922',
+  CONDITIONING: '#f85149',
+  MASK: '#79c0ff',
+  CONTROL_NET: '#db6d28',
+  INT: '#9cdcfe',
+  FLOAT: '#b5cea8',
+  STRING: '#ce9178',
+  BOOLEAN: '#4ec9b0',
+  ANY: '#c9d1d9'
 }
 
 function clampByte(value: number) {
@@ -131,8 +133,8 @@ function stableTypeColor(type: string) {
 
   const hash = fnv1a32(canonical)
   const hue = hash % 360
-  const sat = 0.46
-  const light = 0.52
+  const sat = 0.62
+  const light = 0.55
   return rgbToHex(hslToRgb(hue, sat, light))
 }
 
@@ -147,7 +149,7 @@ function ensureTypeColors(type: string) {
     ;(canvas as any).default_connection_color_byType ??= {}
     ;(canvas as any).default_connection_color_byTypeOff ??= {}
     ;(canvas as any).default_connection_color_byType[key] = color
-    ;(canvas as any).default_connection_color_byTypeOff[key] = dimHex(color, 0.45)
+    ;(canvas as any).default_connection_color_byTypeOff[key] = dimHex(color, 0.35)
   }
 }
 
@@ -281,6 +283,38 @@ function safeStringify(value: unknown): string {
     return JSON.stringify(value, null, 2)
   } catch {
     return String(value)
+  }
+}
+
+function formatParamValueForCopy(value: unknown): string {
+  if (value == null) return String(value)
+  if (typeof value === 'string') return value
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) return String(value)
+    if (Number.isInteger(value)) return String(value)
+    return value.toString()
+  }
+  if (typeof value === 'boolean') return String(value)
+  try {
+    return JSON.stringify(value, null, 2)
+  } catch {
+    return String(value)
+  }
+}
+
+async function copyText(text: string) {
+  const trimmed = String(text ?? '')
+  if (!trimmed) return false
+  try {
+    if (window.workflowViewer?.writeClipboardText) return await window.workflowViewer.writeClipboardText(trimmed)
+  } catch {
+    // ignore
+  }
+  try {
+    await navigator.clipboard.writeText(trimmed)
+    return true
+  } catch {
+    return false
   }
 }
 
@@ -516,6 +550,8 @@ function showSelection(value: unknown) {
   detailsEl.textContent = value ? safeStringify(value) : '(none)'
 }
 
+let selectedNode: any | null = null
+
 function toNodeDetails(node: any) {
   if (!node || typeof node !== 'object') return node
   return {
@@ -535,6 +571,8 @@ function showActiveTabSummary() {
   const tab = getActiveTab()
   if (!tab) {
     showSelection(null)
+    selectedNode = null
+    copyParamsBtn.disabled = true
     return
   }
   const workflow: any = tab.workflow
@@ -542,14 +580,41 @@ function showActiveTabSummary() {
     sourcePath: tab.sourcePath,
     summary: { nodes: workflow?.nodes?.length, links: workflow?.links?.length }
   })
+  selectedNode = null
+  copyParamsBtn.disabled = true
 }
 
 canvas.onNodeSelected = (node: any) => {
   hintEl.classList.add('hidden')
   showSelection(toNodeDetails(node))
+  selectedNode = node
+  copyParamsBtn.disabled = false
 }
 
 canvas.onNodeDeselected = () => showActiveTabSummary()
+
+function nodeParamsToText(node: any) {
+  if (!node || typeof node !== 'object') return ''
+  const params = buildViewerParams(node)
+  if (!params.length) return ''
+  return params
+    .map((item) => {
+      const value = item.kind === 'multiline' ? String(item.value ?? '') : formatParamValueForCopy(item.value)
+      return `${item.label}: ${value}`
+    })
+    .join('\n')
+}
+
+copySelectionBtn.addEventListener('click', async () => {
+  const ok = await copyText(detailsEl.textContent ?? '')
+  if (ok) setStatus('Copied JSON')
+})
+
+copyParamsBtn.addEventListener('click', async () => {
+  const text = selectedNode ? nodeParamsToText(selectedNode) : ''
+  const ok = await copyText(text)
+  if (ok) setStatus('Copied params')
+})
 
 function pathToTitle(sourcePath: string) {
   const normalized = sourcePath.replace(/\\/g, '/')

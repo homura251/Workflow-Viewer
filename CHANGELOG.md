@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.1.6
+
+- UI: copy sidebar JSON / node params to clipboard.
+- Rendering: ComfyUI-style type colors; HiDPI canvas keeps text crisp.
+
 ## v0.1.5
 
 - Interaction: faster zoom, groups only draggable via top handle.

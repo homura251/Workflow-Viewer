@@ -18,6 +18,7 @@ const api = {
   openDialog: () => ipcRenderer.invoke('workflow:open-dialog') as Promise<string | null>,
   readFile: (sourcePath: string) =>
     ipcRenderer.invoke('workflow:read-file', sourcePath) as Promise<WorkflowPayload>,
+  writeClipboardText: (text: string) => ipcRenderer.invoke('clipboard:write-text', text) as Promise<boolean>,
   onOpenPath: (handler: (path: string) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, path: string) => handler(path)
     ipcRenderer.on('workflow:open-path', listener)
