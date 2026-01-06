@@ -31,13 +31,9 @@ const dropTarget = document.getElementById('drop-target')!
 const canvasEl = document.getElementById('graph-canvas') as HTMLCanvasElement
 const mainLayoutEl = document.querySelector('.main') as HTMLElement
 
-LiteGraph.NODE_DEFAULT_COLOR = '#2a2f3a'
-LiteGraph.NODE_DEFAULT_BGCOLOR = '#141821'
-LiteGraph.NODE_DEFAULT_BOXCOLOR = '#000'
-LiteGraph.NODE_TITLE_COLOR = '#d6d9e0'
-LiteGraph.DEFAULT_SHADOW_COLOR = 'rgba(0,0,0,0.35)'
-LiteGraph.CANVAS_GRID_SIZE = 40
-LiteGraph.link_type_colors = {
+type Rgb = { r: number; g: number; b: number }
+
+const BASE_TYPE_COLORS: Record<string, string> = {
   MODEL: '#58a6ff',
   CLIP: '#a371f7',
   VAE: '#ff7b72',
@@ -45,11 +41,137 @@ LiteGraph.link_type_colors = {
   LATENT: '#d29922',
   CONDITIONING: '#f85149',
   MASK: '#79c0ff',
+  CONTROL_NET: '#db6d28',
   INT: '#9cdcfe',
   FLOAT: '#b5cea8',
   STRING: '#ce9178',
-  BOOLEAN: '#4ec9b0'
+  BOOLEAN: '#4ec9b0',
+  ANY: '#c9d1d9'
 }
+
+function clampByte(value: number) {
+  return Math.max(0, Math.min(255, Math.round(value)))
+}
+
+function parseHexColor(color: string): Rgb | null {
+  const trimmed = color.trim()
+  const match = /^#?([0-9a-f]{6})$/i.exec(trimmed)
+  if (!match) return null
+  const hex = match[1]!
+  return { r: parseInt(hex.slice(0, 2), 16), g: parseInt(hex.slice(2, 4), 16), b: parseInt(hex.slice(4, 6), 16) }
+}
+
+function rgbToHex({ r, g, b }: Rgb) {
+  const to2 = (n: number) => clampByte(n).toString(16).padStart(2, '0')
+  return `#${to2(r)}${to2(g)}${to2(b)}`
+}
+
+function dimHex(color: string, factor: number) {
+  const rgb = parseHexColor(color)
+  if (!rgb) return color
+  return rgbToHex({ r: rgb.r * factor, g: rgb.g * factor, b: rgb.b * factor })
+}
+
+function fnv1a32(input: string) {
+  let hash = 0x811c9dc5
+  for (let i = 0; i < input.length; i++) {
+    hash ^= input.charCodeAt(i)
+    hash = Math.imul(hash, 0x01000193)
+  }
+  return hash >>> 0
+}
+
+function hslToRgb(h: number, s: number, l: number): Rgb {
+  const c = (1 - Math.abs(2 * l - 1)) * s
+  const hh = h / 60
+  const x = c * (1 - Math.abs((hh % 2) - 1))
+  let r1 = 0
+  let g1 = 0
+  let b1 = 0
+  if (hh >= 0 && hh < 1) {
+    r1 = c
+    g1 = x
+  } else if (hh >= 1 && hh < 2) {
+    r1 = x
+    g1 = c
+  } else if (hh >= 2 && hh < 3) {
+    g1 = c
+    b1 = x
+  } else if (hh >= 3 && hh < 4) {
+    g1 = x
+    b1 = c
+  } else if (hh >= 4 && hh < 5) {
+    r1 = x
+    b1 = c
+  } else {
+    r1 = c
+    b1 = x
+  }
+  const m = l - c / 2
+  return { r: (r1 + m) * 255, g: (g1 + m) * 255, b: (b1 + m) * 255 }
+}
+
+function canonicalizeType(type: string) {
+  const trimmed = type.trim()
+  if (!trimmed) return trimmed
+  if (/^[a-z0-9_]+$/i.test(trimmed)) return trimmed.toUpperCase()
+  return trimmed
+}
+
+function stableTypeColor(type: string) {
+  const canonical = canonicalizeType(type)
+  const hit =
+    BASE_TYPE_COLORS[canonical] ??
+    BASE_TYPE_COLORS[canonical.toUpperCase()] ??
+    BASE_TYPE_COLORS[canonical.toLowerCase()] ??
+    BASE_TYPE_COLORS[type] ??
+    BASE_TYPE_COLORS[type.toUpperCase()] ??
+    BASE_TYPE_COLORS[type.toLowerCase()]
+  if (hit) return hit
+
+  const hash = fnv1a32(canonical)
+  const hue = hash % 360
+  const sat = 0.62
+  const light = 0.55
+  return rgbToHex(hslToRgb(hue, sat, light))
+}
+
+function ensureTypeColors(type: string) {
+  const keys = new Set([type, canonicalizeType(type), type.toUpperCase(), type.toLowerCase()].filter(Boolean))
+  const existing = Array.from(keys).find((key) => (LGraphCanvas as any).link_type_colors?.[key])
+  const color = existing ? (LGraphCanvas as any).link_type_colors[existing] : stableTypeColor(type)
+
+  for (const key of keys) {
+    ;(LGraphCanvas as any).link_type_colors ??= {}
+    ;(LGraphCanvas as any).link_type_colors[key] = color
+    ;(canvas as any).default_connection_color_byType ??= {}
+    ;(canvas as any).default_connection_color_byTypeOff ??= {}
+    ;(canvas as any).default_connection_color_byType[key] = color
+    ;(canvas as any).default_connection_color_byTypeOff[key] = dimHex(color, 0.35)
+  }
+}
+
+function registerWorkflowTypeColors(workflow: any) {
+  const nodes: any[] = Array.isArray(workflow?.nodes) ? workflow.nodes : []
+  for (const node of nodes) {
+    const inputs: any[] = Array.isArray(node?.inputs) ? node.inputs : []
+    const outputs: any[] = Array.isArray(node?.outputs) ? node.outputs : []
+    for (const slot of [...inputs, ...outputs]) {
+      if (!slot || typeof slot !== 'object') continue
+      const type = slot.type
+      if (typeof type !== 'string') continue
+      ensureTypeColors(type)
+    }
+  }
+}
+
+LiteGraph.NODE_DEFAULT_COLOR = '#2a2f3a'
+LiteGraph.NODE_DEFAULT_BGCOLOR = '#141821'
+LiteGraph.NODE_DEFAULT_BOXCOLOR = '#000'
+LiteGraph.NODE_TITLE_COLOR = '#d6d9e0'
+LiteGraph.DEFAULT_SHADOW_COLOR = 'rgba(0,0,0,0.35)'
+LiteGraph.CANVAS_GRID_SIZE = 40
+LiteGraph.NODE_DEFAULT_SHAPE = 'card'
 
 const graph = new LGraph()
 const canvas = new LGraphCanvas(canvasEl, graph)
@@ -57,6 +179,9 @@ const canvas = new LGraphCanvas(canvasEl, graph)
 ;(canvas as any).render_shadows = false
 ;(canvas as any).render_connections_shadows = false
 ;(canvas as any).connections_width = 3.5
+;(canvas as any).use_gradients = true
+;(canvas as any).render_canvas_border = false
+;(canvas as any).clear_background_color = '#0b0d12'
 graph.start()
 
 const GROUP_DRAG_HANDLE_HEIGHT = 28
@@ -250,47 +375,56 @@ function installParamOverlay(node: any) {
     if (!params.length) return
 
     const titleHeight = (LiteGraph as any).NODE_TITLE_HEIGHT ?? 24
-    const paddingX = 8
+    const slotHeight = (LiteGraph as any).NODE_SLOT_HEIGHT ?? 20
+    const maxSlots = Math.max(Array.isArray(this.inputs) ? this.inputs.length : 0, Array.isArray(this.outputs) ? this.outputs.length : 0)
+    const startY = Math.max(8, Math.ceil(maxSlots * slotHeight + 8))
+    const paddingX = 10
     const lineHeight = 16
+    const widgetHeight = 20
     const startX = paddingX
-    let y = titleHeight + 8
+    let y = startY
 
     ctx.save()
     ctx.font = '13px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif'
-
     const boxWidth = Math.max(40, (this.size?.[0] ?? 0) - paddingX * 2)
 
     for (const item of params.slice(0, PARAM_MAX_LINES)) {
       const label = item.label
       const rawText = item.kind === 'multiline' ? String(item.value ?? '') : formatParamValue(item.value)
 
-      ctx.fillStyle = 'rgba(255,255,255,0.06)'
+      ctx.fillStyle = 'rgba(255,255,255,0.05)'
       ctx.strokeStyle = 'rgba(255,255,255,0.10)'
       ctx.lineWidth = 1
-      const boxHeight = item.kind === 'multiline' ? lineHeight * MULTILINE_PREVIEW_LINES + 10 : lineHeight + 10
-      const rx = startX - 2
-      const ry = y - lineHeight + 4
-      const rw = boxWidth + 4
+
+      const boxHeight = item.kind === 'multiline' ? lineHeight * MULTILINE_PREVIEW_LINES + 28 : widgetHeight
+      const rx = startX
+      const ry = y
+      const rw = boxWidth
       const rh = boxHeight
       ctx.beginPath()
-      if (typeof (ctx as any).roundRect === 'function') (ctx as any).roundRect(rx, ry, rw, rh, 6)
+      if (typeof (ctx as any).roundRect === 'function') (ctx as any).roundRect(rx, ry, rw, rh, 10)
       else ctx.rect(rx, ry, rw, rh)
       ctx.fill()
       ctx.stroke()
 
-      ctx.fillStyle = 'rgba(180,190,205,0.92)'
-      ctx.fillText(label, startX + 6, y + 2)
-
-      ctx.fillStyle = 'rgba(230,237,243,0.92)'
       if (item.kind === 'multiline') {
-        const textY = y + lineHeight + 4
-        const maxTextWidth = Math.max(10, boxWidth - 12)
+        ctx.fillStyle = 'rgba(180,190,205,0.92)'
+        ctx.fillText(label, startX + 10, y + 16)
+
+        ctx.fillStyle = 'rgba(230,237,243,0.92)'
+        const textY = y + 16 + 18
+        const maxTextWidth = Math.max(10, boxWidth - 20)
         const wrapped = wrapTextByWidth(ctx, rawText, maxTextWidth).slice(0, MULTILINE_PREVIEW_LINES)
-        for (let i = 0; i < wrapped.length; i++) ctx.fillText(wrapped[i]!, startX + 6, textY + i * lineHeight)
+        for (let i = 0; i < wrapped.length; i++) ctx.fillText(wrapped[i]!, startX + 10, textY + i * lineHeight)
       } else {
-        const labelWidth = ctx.measureText(label).width
-        const valueX = Math.min(startX + 10 + labelWidth + 10, startX + boxWidth - 10)
-        ctx.fillText(String(rawText), valueX, y + 2)
+        const baselineY = y + widgetHeight * 0.7
+        ctx.fillStyle = 'rgba(180,190,205,0.92)'
+        ctx.fillText(label, startX + 10, baselineY)
+
+        ctx.fillStyle = 'rgba(230,237,243,0.92)'
+        ctx.textAlign = 'right'
+        ctx.fillText(String(rawText), startX + boxWidth - 10, baselineY)
+        ctx.textAlign = 'left'
       }
 
       y += boxHeight + 6
@@ -301,10 +435,11 @@ function installParamOverlay(node: any) {
 
   const params = node.__viewerParams as ViewerParamItem[]
   if (Array.isArray(node.size) && params.length) {
-    const titleHeight = (LiteGraph as any).NODE_TITLE_HEIGHT ?? 24
-    let needed = titleHeight + 8 + 12
+    const slotHeight = (LiteGraph as any).NODE_SLOT_HEIGHT ?? 20
+    const maxSlots = Math.max(Array.isArray(node.inputs) ? node.inputs.length : 0, Array.isArray(node.outputs) ? node.outputs.length : 0)
+    let needed = Math.max(0, Math.ceil(maxSlots * slotHeight + 8)) + 12
     for (const item of params.slice(0, PARAM_MAX_LINES)) {
-      needed += (item.kind === 'multiline' ? 16 * MULTILINE_PREVIEW_LINES + 10 : 16 + 10) + 6
+      needed += (item.kind === 'multiline' ? 16 * MULTILINE_PREVIEW_LINES + 28 : 20) + 6
     }
     node.size[1] = Math.max(node.size[1] ?? 0, needed)
   }
@@ -423,6 +558,8 @@ function renderTabs() {
 
 function loadWorkflowIntoGraph(workflow: unknown, { fit = false }: { fit?: boolean } = {}) {
   const wf = workflow as any
+  registerWorkflowTypeColors(wf)
+  for (const type of Object.keys(BASE_TYPE_COLORS)) ensureTypeColors(type)
   ensureAllNodeTypes(wf)
   graph.clear()
   graph.configure(wf)
