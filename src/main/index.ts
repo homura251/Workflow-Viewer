@@ -245,9 +245,16 @@ async function createWindow() {
 
   buildMenu(window)
 
-  if (process.env.VITE_DEV_SERVER_URL) {
-    await window.loadURL(process.env.VITE_DEV_SERVER_URL)
-    window.webContents.openDevTools({ mode: 'detach' })
+  const devServerUrl =
+    process.env.VITE_DEV_SERVER_URL ??
+    process.env.MAIN_VITE_DEV_SERVER_URL ??
+    (process.env.NODE_ENV_ELECTRON_VITE === 'development' ? 'http://localhost:5173/' : '')
+
+  if (devServerUrl) {
+    await window.loadURL(devServerUrl)
+    if (process.env.NODE_ENV_ELECTRON_VITE === 'development') {
+      window.webContents.openDevTools({ mode: 'detach' })
+    }
   } else {
     await window.loadFile(fileURLToPath(new URL('../renderer/index.html', import.meta.url)))
   }
