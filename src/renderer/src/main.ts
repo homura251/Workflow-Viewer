@@ -48,7 +48,22 @@ LiteGraph.link_type_colors = {
 const graph = new LGraph()
 const canvas = new LGraphCanvas(canvasEl, graph)
 ;(canvas as any).allow_dragcanvas = true
+;(canvas as any).render_shadows = false
+;(canvas as any).render_connections_shadows = false
+;(canvas as any).connections_width = 3.5
 graph.start()
+
+const GROUP_DRAG_HANDLE_HEIGHT = 28
+;(graph as any).getGroupOnPos = (x: number, y: number) => {
+  const groups: any[] = (graph as any)._groups ?? []
+  for (let i = groups.length - 1; i >= 0; i--) {
+    const group = groups[i]
+    if (!group?.isPointInside?.(x, y, 2, true)) continue
+    const top = Array.isArray(group.pos) ? group.pos[1] : group.pos?.[1]
+    if (typeof top === 'number' && y <= top + GROUP_DRAG_HANDLE_HEIGHT) return group
+  }
+  return null
+}
 
 let tabs: TabState[] = []
 let activeTabId: string | null = null
@@ -56,6 +71,8 @@ let sidebarVisible = true
 
 const PARAM_MAX_LINES = 10
 const PARAM_MAX_VALUE_CHARS = 60
+const ZOOM_STEP = 1.22
+const ZOOM_WHEEL_INTENSITY = 60
 
 function setStatus(text: string) {
   statusEl.textContent = text
@@ -147,7 +164,7 @@ function installParamOverlay(node: any) {
     let y = titleHeight + 8
 
     ctx.save()
-    ctx.font = '12px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif'
+    ctx.font = '13px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif'
     ctx.fillStyle = 'rgba(230,237,243,0.92)'
 
     for (const [key, value] of params) {
@@ -458,8 +475,7 @@ canvasEl.addEventListener(
     const dy = event.deltaY ?? 0
     if (!dy) return
 
-    const step = 1.1
-    const factor = Math.pow(step, -dy / 100)
+    const factor = Math.pow(ZOOM_STEP, -dy / ZOOM_WHEEL_INTENSITY)
     zoomByFactor(factor, { x: event.clientX, y: event.clientY })
 
     event.preventDefault()
@@ -636,8 +652,8 @@ resetBtn.addEventListener('click', () => resetView())
 toggleSidebarBtn.addEventListener('click', () => setSidebarVisible(!sidebarVisible))
 
 window.workflowViewer.onCommand((command) => {
-  if (command === 'zoom-in') zoomByFactor(1.1)
-  else if (command === 'zoom-out') zoomByFactor(1 / 1.1)
+  if (command === 'zoom-in') zoomByFactor(ZOOM_STEP)
+  else if (command === 'zoom-out') zoomByFactor(1 / ZOOM_STEP)
   else if (command === 'reset-view') resetView()
   else if (command === 'fit') {
     fitToContent()

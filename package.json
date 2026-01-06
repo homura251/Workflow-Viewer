@@ -1,6 +1,6 @@
 {
   "name": "comfyui-workflow-viewer",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "private": true,
   "description": "A lightweight desktop viewer for ComfyUI workflow JSON/PNG without running ComfyUI backend.",
   "author": "",

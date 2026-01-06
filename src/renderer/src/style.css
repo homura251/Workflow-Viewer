@@ -180,6 +180,9 @@ body {
   padding: 12px;
   overflow: auto;
   color: #c9d1d9;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .statusbar {

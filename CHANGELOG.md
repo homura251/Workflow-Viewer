@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.1.5
+
+- Interaction: faster zoom, groups only draggable via top handle.
+- Rendering: slightly clearer defaults (no shadows, thicker links, monospace sidebar).
+
 ## v0.1.4
 
 - Tabs: open multiple workflows, switch/close with menu + shortcuts.
