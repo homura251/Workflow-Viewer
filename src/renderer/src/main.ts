@@ -13,6 +13,12 @@ type TabState = {
   view: { offset: [number, number]; scale: number } | null
 }
 
+type ViewerParamItem = {
+  label: string
+  value: unknown
+  kind: 'inline' | 'multiline'
+}
+
 const statusEl = document.getElementById('status')!
 const hintEl = document.getElementById('hint')!
 const detailsEl = document.getElementById('details') as HTMLPreElement
@@ -69,10 +75,23 @@ let tabs: TabState[] = []
 let activeTabId: string | null = null
 let sidebarVisible = true
 
-const PARAM_MAX_LINES = 10
+const PARAM_MAX_LINES = 20
 const PARAM_MAX_VALUE_CHARS = 60
 const ZOOM_STEP = 1.22
 const ZOOM_WHEEL_INTENSITY = 60
+const MULTILINE_PREVIEW_LINES = 6
+
+const COMFY_WIDGET_LABELS: Record<string, string[]> = {
+  KSampler: ['seed', 'control_after_generate', 'steps', 'cfg', 'sampler_name', 'scheduler', 'denoise'],
+  EmptyLatentImage: ['width', 'height', 'batch_size'],
+  CLIPTextEncode: ['text'],
+  SaveImage: ['filename_prefix'],
+  LoadImage: ['image', 'upload'],
+  CheckpointLoaderSimple: ['ckpt_name'],
+  DiffControlNetLoader: ['control_net_name'],
+  ControlNetApply: ['strength'],
+  VAEDecode: []
+}
 
 function setStatus(text: string) {
   statusEl.textContent = text
@@ -118,7 +137,13 @@ function ensureAllNodeTypes(workflow: any) {
 function formatParamValue(value: unknown): string {
   if (value == null) return String(value)
   if (typeof value === 'string') return value.length > PARAM_MAX_VALUE_CHARS ? `${value.slice(0, PARAM_MAX_VALUE_CHARS)}…` : value
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) return String(value)
+    if (Number.isInteger(value)) return String(value)
+    const trimmed = value.toFixed(4).replace(/\.?0+$/, '')
+    return trimmed.length > PARAM_MAX_VALUE_CHARS ? `${trimmed.slice(0, PARAM_MAX_VALUE_CHARS)}…` : trimmed
+  }
+  if (typeof value === 'boolean') return String(value)
   try {
     const json = JSON.stringify(value)
     if (!json) return String(value)
@@ -128,58 +153,160 @@ function formatParamValue(value: unknown): string {
   }
 }
 
-function buildViewerParams(node: any): Array<[string, string]> {
-  const out: Array<[string, string]> = []
+function buildViewerParams(node: any): ViewerParamItem[] {
+  const out: ViewerParamItem[] = []
 
   const props = node?.properties
   if (props && typeof props === 'object') {
     const keys = Object.keys(props).sort((a, b) => a.localeCompare(b))
-    for (const key of keys) out.push([key, formatParamValue(props[key])])
+    for (const key of keys) {
+      if (key === 'Node name for S&R') continue
+      out.push({ label: key, value: props[key], kind: 'inline' })
+    }
   }
 
   const widgetsValues = node?.widgets_values
   if (Array.isArray(widgetsValues)) {
-    for (let i = 0; i < widgetsValues.length; i++) out.push([`w${i}`, formatParamValue(widgetsValues[i])])
+    const labels = COMFY_WIDGET_LABELS[String(node?.type ?? '')] ?? []
+    for (let i = 0; i < widgetsValues.length; i++) {
+      const label = labels[i] ?? `w${i}`
+      const raw = widgetsValues[i]
+      const kind: ViewerParamItem['kind'] =
+        label === 'text' || (typeof raw === 'string' && raw.includes('\n')) ? 'multiline' : 'inline'
+      out.push({ label, value: raw, kind })
+    }
   }
 
-  return out.slice(0, PARAM_MAX_LINES)
+  return out
+}
+
+function normalizeNodeSize(node: any) {
+  if (!node || Array.isArray(node.size)) return
+  const size = node.size
+  if (!size || typeof size !== 'object') return
+  const w = (size as any)[0] ?? (size as any)['0']
+  const h = (size as any)[1] ?? (size as any)['1']
+  if (typeof w === 'number' && typeof h === 'number') node.size = [w, h]
+}
+
+function wrapTextByWidth(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
+  const normalized = text.replace(/\r\n/g, '\n')
+  const paragraphs = normalized.split('\n')
+  const lines: string[] = []
+
+  for (const paragraph of paragraphs) {
+    if (!paragraph) {
+      lines.push('')
+      continue
+    }
+
+    let current = ''
+    for (const token of paragraph.split(/(\s+)/).filter((t) => t.length > 0)) {
+      const next = current ? current + token : token
+      if (ctx.measureText(next).width <= maxWidth) {
+        current = next
+        continue
+      }
+
+      if (current) {
+        lines.push(current.trimEnd())
+        current = ''
+      }
+
+      if (ctx.measureText(token).width <= maxWidth) {
+        current = token
+        continue
+      }
+
+      let chunk = ''
+      for (const ch of token) {
+        const attempt = chunk + ch
+        if (ctx.measureText(attempt).width > maxWidth && chunk) {
+          lines.push(chunk)
+          chunk = ch
+        } else {
+          chunk = attempt
+        }
+      }
+      current = chunk
+    }
+    if (current) lines.push(current.trimEnd())
+  }
+
+  return lines
 }
 
 function installParamOverlay(node: any) {
   if (!node || node.__viewerParamOverlayInstalled) return
   node.__viewerParamOverlayInstalled = true
+  normalizeNodeSize(node)
   node.__viewerParams = buildViewerParams(node)
 
   const original = typeof node.onDrawForeground === 'function' ? node.onDrawForeground.bind(node) : null
   node.onDrawForeground = function (ctx: CanvasRenderingContext2D) {
     if (original) original(ctx)
 
-    const params: Array<[string, string]> = this.__viewerParams ?? []
+    const params: ViewerParamItem[] = this.__viewerParams ?? []
     if (!params.length) return
 
     const titleHeight = (LiteGraph as any).NODE_TITLE_HEIGHT ?? 24
     const paddingX = 8
-    const lineHeight = 14
+    const lineHeight = 16
     const startX = paddingX
     let y = titleHeight + 8
 
     ctx.save()
     ctx.font = '13px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif'
-    ctx.fillStyle = 'rgba(230,237,243,0.92)'
 
-    for (const [key, value] of params) {
-      const text = `${key}: ${value}`
-      ctx.fillText(text, startX, y)
-      y += lineHeight
+    const boxWidth = Math.max(40, (this.size?.[0] ?? 0) - paddingX * 2)
+
+    for (const item of params.slice(0, PARAM_MAX_LINES)) {
+      const label = item.label
+      const rawText = item.kind === 'multiline' ? String(item.value ?? '') : formatParamValue(item.value)
+
+      ctx.fillStyle = 'rgba(255,255,255,0.06)'
+      ctx.strokeStyle = 'rgba(255,255,255,0.10)'
+      ctx.lineWidth = 1
+      const boxHeight = item.kind === 'multiline' ? lineHeight * MULTILINE_PREVIEW_LINES + 10 : lineHeight + 10
+      const rx = startX - 2
+      const ry = y - lineHeight + 4
+      const rw = boxWidth + 4
+      const rh = boxHeight
+      ctx.beginPath()
+      if (typeof (ctx as any).roundRect === 'function') (ctx as any).roundRect(rx, ry, rw, rh, 6)
+      else ctx.rect(rx, ry, rw, rh)
+      ctx.fill()
+      ctx.stroke()
+
+      ctx.fillStyle = 'rgba(180,190,205,0.92)'
+      ctx.fillText(label, startX + 6, y + 2)
+
+      ctx.fillStyle = 'rgba(230,237,243,0.92)'
+      if (item.kind === 'multiline') {
+        const textY = y + lineHeight + 4
+        const maxTextWidth = Math.max(10, boxWidth - 12)
+        const wrapped = wrapTextByWidth(ctx, rawText, maxTextWidth).slice(0, MULTILINE_PREVIEW_LINES)
+        for (let i = 0; i < wrapped.length; i++) ctx.fillText(wrapped[i]!, startX + 6, textY + i * lineHeight)
+      } else {
+        const labelWidth = ctx.measureText(label).width
+        const valueX = Math.min(startX + 10 + labelWidth + 10, startX + boxWidth - 10)
+        ctx.fillText(String(rawText), valueX, y + 2)
+      }
+
+      y += boxHeight + 6
     }
 
     ctx.restore()
   }
 
-  const params = node.__viewerParams as Array<[string, string]>
+  const params = node.__viewerParams as ViewerParamItem[]
   if (Array.isArray(node.size) && params.length) {
-    const minHeight = ((LiteGraph as any).NODE_TITLE_HEIGHT ?? 24) + 8 + 14 * params.length + 12
-    node.size[1] = Math.max(node.size[1] ?? 0, minHeight)
+    const titleHeight = (LiteGraph as any).NODE_TITLE_HEIGHT ?? 24
+    let needed = titleHeight + 8 + 12
+    for (const item of params.slice(0, PARAM_MAX_LINES)) {
+      needed += (item.kind === 'multiline' ? 16 * MULTILINE_PREVIEW_LINES + 10 : 16 + 10) + 6
+    }
+    node.size[1] = Math.max(node.size[1] ?? 0, needed)
   }
 }
 
