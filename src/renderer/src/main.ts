@@ -34,7 +34,7 @@ const dropTarget = document.getElementById('drop-target')!
 const canvasEl = document.getElementById('graph-canvas') as HTMLCanvasElement
 const mainLayoutEl = document.querySelector('.main') as HTMLElement
 const nodeOverlayEl = document.getElementById('node-overlay') as HTMLDivElement
-const nodeOverlayTextEl = document.getElementById('node-overlay-text') as HTMLPreElement
+const overlayMeasureCtx = document.createElement('canvas').getContext('2d')
 
 type Rgb = { r: number; g: number; b: number }
 
@@ -256,6 +256,17 @@ let sidebarVisible = true
 
 const PARAM_MAX_LINES = 20
 const PARAM_MAX_VALUE_CHARS = 60
+const PARAM_FONT_SIZE = 13
+const PARAM_LINE_HEIGHT = 16
+const PARAM_WIDGET_HEIGHT = 20
+const PARAM_PADDING_X = 10
+const PARAM_TEXT_PADDING = 10
+const PARAM_LABEL_OFFSET_Y = 16
+const PARAM_TEXT_OFFSET_Y = 34
+const PARAM_BOX_GAP = 6
+const PARAM_MULTILINE_EXTRA = 28
+const PARAM_FONT_FAMILY = 'system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif'
+const PARAM_FONT = `${PARAM_FONT_SIZE}px ${PARAM_FONT_FAMILY}`
 const ZOOM_STEP = 1.22
 const ZOOM_WHEEL_INTENSITY = 60
 const MULTILINE_PREVIEW_LINES = 6
@@ -467,6 +478,152 @@ function wrapTextByWidth(ctx: CanvasRenderingContext2D, text: string, maxWidth: 
   return lines
 }
 
+type OverlayItemLayout = {
+  kind: 'inline' | 'multiline'
+  label: string
+  value: string
+  lines: string[]
+  top: number
+  height: number
+}
+
+type OverlayLayout = {
+  startY: number
+  boxWidth: number
+  contentHeight: number
+  items: OverlayItemLayout[]
+}
+
+function getOverlayParams(node: any) {
+  if (!node || typeof node !== 'object') return [] as ViewerParamItem[]
+  const cached = (node as any).__viewerParams
+  if (Array.isArray(cached)) return cached as ViewerParamItem[]
+  return buildViewerParams(node)
+}
+
+function buildOverlayLayout(node: any): OverlayLayout | null {
+  if (!node || typeof node !== 'object') return null
+  const params = getOverlayParams(node)
+  if (!params.length) return null
+  normalizeNodeSize(node)
+
+  const slotHeight = (LiteGraph as any).NODE_SLOT_HEIGHT ?? 20
+  const maxSlots = Math.max(Array.isArray(node.inputs) ? node.inputs.length : 0, Array.isArray(node.outputs) ? node.outputs.length : 0)
+  const startY = Math.max(8, Math.ceil(maxSlots * slotHeight + 8))
+  const boxWidth = Math.max(40, (node.size?.[0] ?? 0) - PARAM_PADDING_X * 2)
+
+  if (overlayMeasureCtx) overlayMeasureCtx.font = PARAM_FONT
+
+  let y = startY
+  const items: OverlayItemLayout[] = []
+
+  for (const item of params.slice(0, PARAM_MAX_LINES)) {
+    const isMultiline = item.kind === 'multiline'
+    const height =
+      isMultiline
+        ? PARAM_LINE_HEIGHT * MULTILINE_PREVIEW_LINES + PARAM_MULTILINE_EXTRA
+        : PARAM_WIDGET_HEIGHT
+    const value = isMultiline ? String(item.value ?? '') : formatParamValue(item.value)
+    let lines: string[] = []
+
+    if (isMultiline) {
+      if (overlayMeasureCtx) {
+        const maxTextWidth = Math.max(10, boxWidth - PARAM_TEXT_PADDING * 2)
+        lines = wrapTextByWidth(overlayMeasureCtx, value, maxTextWidth).slice(0, MULTILINE_PREVIEW_LINES)
+      } else {
+        lines = value.split(/\r?\n/).slice(0, MULTILINE_PREVIEW_LINES)
+      }
+    }
+
+    items.push({
+      kind: item.kind,
+      label: item.label,
+      value,
+      lines,
+      top: y - startY,
+      height
+    })
+
+    y += height + PARAM_BOX_GAP
+  }
+
+  const contentHeight = Math.max(0, y - startY - PARAM_BOX_GAP)
+  return { startY, boxWidth, contentHeight, items }
+}
+
+function clearNodeOverlay() {
+  nodeOverlayEl.textContent = ''
+  overlayItems = []
+  overlayLayout = null
+}
+
+function installOverlayInteractionHandlers(el: HTMLElement) {
+  el.addEventListener('pointerdown', (event) => {
+    overlayInteracting = true
+    event.stopPropagation()
+  })
+  el.addEventListener('pointermove', (event) => event.stopPropagation())
+  el.addEventListener('pointerup', (event) => {
+    overlayInteracting = false
+    event.stopPropagation()
+  })
+  el.addEventListener('pointercancel', (event) => {
+    overlayInteracting = false
+    event.stopPropagation()
+  })
+}
+
+function renderNodeOverlay(node: any) {
+  clearNodeOverlay()
+  const layout = buildOverlayLayout(node)
+  if (!layout) return false
+  overlayLayout = layout
+  nodeOverlayEl.style.width = `${layout.boxWidth}px`
+  nodeOverlayEl.style.height = `${Math.max(0, layout.contentHeight)}px`
+
+  const inlineTextTop = PARAM_WIDGET_HEIGHT * 0.7 - PARAM_FONT_SIZE
+  const multilineLabelTop = PARAM_LABEL_OFFSET_Y - PARAM_FONT_SIZE
+  const multilineValueTop = PARAM_TEXT_OFFSET_Y - PARAM_FONT_SIZE
+
+  for (const item of layout.items) {
+    const itemEl = document.createElement('div')
+    itemEl.className = `node-overlay-item ${item.kind}`
+    itemEl.style.top = `${item.top}px`
+    itemEl.style.height = `${item.height}px`
+    itemEl.style.width = `${layout.boxWidth}px`
+
+    const labelEl = document.createElement('span')
+    labelEl.className = 'node-overlay-label'
+    labelEl.textContent = item.label
+    labelEl.style.left = `${PARAM_TEXT_PADDING}px`
+    labelEl.style.top = `${item.kind === 'inline' ? inlineTextTop : multilineLabelTop}px`
+    itemEl.append(labelEl)
+
+    if (item.kind === 'multiline') {
+      const valueEl = document.createElement('div')
+      valueEl.className = 'node-overlay-multiline'
+      valueEl.textContent = item.lines.join('\n')
+      valueEl.style.top = `${multilineValueTop}px`
+      valueEl.style.left = `${PARAM_TEXT_PADDING}px`
+      valueEl.style.right = `${PARAM_TEXT_PADDING}px`
+      itemEl.append(valueEl)
+    } else {
+      const valueEl = document.createElement('span')
+      valueEl.className = 'node-overlay-value'
+      valueEl.textContent = item.value
+      valueEl.style.top = `${inlineTextTop}px`
+      valueEl.style.right = `${PARAM_TEXT_PADDING}px`
+      itemEl.append(valueEl)
+    }
+
+    installOverlayInteractionHandlers(itemEl)
+    nodeOverlayEl.append(itemEl)
+    overlayItems.push(itemEl)
+  }
+
+  return layout.items.length > 0
+}
+
 function installParamOverlay(node: any) {
   if (!node || node.__viewerParamOverlayInstalled) return
   node.__viewerParamOverlayInstalled = true
@@ -484,15 +641,12 @@ function installParamOverlay(node: any) {
     const slotHeight = (LiteGraph as any).NODE_SLOT_HEIGHT ?? 20
     const maxSlots = Math.max(Array.isArray(this.inputs) ? this.inputs.length : 0, Array.isArray(this.outputs) ? this.outputs.length : 0)
     const startY = Math.max(8, Math.ceil(maxSlots * slotHeight + 8))
-    const paddingX = 10
-    const lineHeight = 16
-    const widgetHeight = 20
-    const startX = paddingX
+    const startX = PARAM_PADDING_X
     let y = startY
 
     ctx.save()
-    ctx.font = '13px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif'
-    const boxWidth = Math.max(40, (this.size?.[0] ?? 0) - paddingX * 2)
+    ctx.font = PARAM_FONT
+    const boxWidth = Math.max(40, (this.size?.[0] ?? 0) - PARAM_PADDING_X * 2)
 
     for (const item of params.slice(0, PARAM_MAX_LINES)) {
       const label = item.label
@@ -502,7 +656,10 @@ function installParamOverlay(node: any) {
       ctx.strokeStyle = 'rgba(255,255,255,0.10)'
       ctx.lineWidth = 1
 
-      const boxHeight = item.kind === 'multiline' ? lineHeight * MULTILINE_PREVIEW_LINES + 28 : widgetHeight
+      const boxHeight =
+        item.kind === 'multiline'
+          ? PARAM_LINE_HEIGHT * MULTILINE_PREVIEW_LINES + PARAM_MULTILINE_EXTRA
+          : PARAM_WIDGET_HEIGHT
       const rx = startX
       const ry = y
       const rw = boxWidth
@@ -515,25 +672,25 @@ function installParamOverlay(node: any) {
 
       if (item.kind === 'multiline') {
         ctx.fillStyle = 'rgba(180,190,205,0.92)'
-        ctx.fillText(label, startX + 10, y + 16)
+        ctx.fillText(label, startX + PARAM_TEXT_PADDING, y + PARAM_LABEL_OFFSET_Y)
 
         ctx.fillStyle = 'rgba(230,237,243,0.92)'
-        const textY = y + 16 + 18
-        const maxTextWidth = Math.max(10, boxWidth - 20)
+        const textY = y + PARAM_TEXT_OFFSET_Y
+        const maxTextWidth = Math.max(10, boxWidth - PARAM_TEXT_PADDING * 2)
         const wrapped = wrapTextByWidth(ctx, rawText, maxTextWidth).slice(0, MULTILINE_PREVIEW_LINES)
-        for (let i = 0; i < wrapped.length; i++) ctx.fillText(wrapped[i]!, startX + 10, textY + i * lineHeight)
+        for (let i = 0; i < wrapped.length; i++) ctx.fillText(wrapped[i]!, startX + PARAM_TEXT_PADDING, textY + i * PARAM_LINE_HEIGHT)
       } else {
-        const baselineY = y + widgetHeight * 0.7
+        const baselineY = y + PARAM_WIDGET_HEIGHT * 0.7
         ctx.fillStyle = 'rgba(180,190,205,0.92)'
-        ctx.fillText(label, startX + 10, baselineY)
+        ctx.fillText(label, startX + PARAM_TEXT_PADDING, baselineY)
 
         ctx.fillStyle = 'rgba(230,237,243,0.92)'
         ctx.textAlign = 'right'
-        ctx.fillText(String(rawText), startX + boxWidth - 10, baselineY)
+        ctx.fillText(String(rawText), startX + boxWidth - PARAM_TEXT_PADDING, baselineY)
         ctx.textAlign = 'left'
       }
 
-      y += boxHeight + 6
+      y += boxHeight + PARAM_BOX_GAP
     }
 
     ctx.restore()
@@ -545,7 +702,10 @@ function installParamOverlay(node: any) {
     const maxSlots = Math.max(Array.isArray(node.inputs) ? node.inputs.length : 0, Array.isArray(node.outputs) ? node.outputs.length : 0)
     let needed = Math.max(0, Math.ceil(maxSlots * slotHeight + 8)) + 12
     for (const item of params.slice(0, PARAM_MAX_LINES)) {
-      needed += (item.kind === 'multiline' ? 16 * MULTILINE_PREVIEW_LINES + 28 : 20) + 6
+      needed +=
+        (item.kind === 'multiline'
+          ? PARAM_LINE_HEIGHT * MULTILINE_PREVIEW_LINES + PARAM_MULTILINE_EXTRA
+          : PARAM_WIDGET_HEIGHT) + PARAM_BOX_GAP
     }
     node.size[1] = Math.max(node.size[1] ?? 0, needed)
   }
@@ -578,7 +738,9 @@ let selectedNode: any | null = null
 let nodeOverlayVisible = false
 let overlaySyncRunning = false
 let overlayInteracting = false
-let lastOverlayLayout: { left: number; top: number; width: number; height: number } | null = null
+let overlayLayout: OverlayLayout | null = null
+let overlayItems: HTMLDivElement[] = []
+let lastOverlayLayout: { left: number; top: number; width: number; height: number; scale: number } | null = null
 
 function setNodeOverlayVisible(visible: boolean) {
   nodeOverlayVisible = visible
@@ -589,22 +751,15 @@ function setNodeOverlayVisible(visible: boolean) {
 }
 
 function computeOverlayLayout(node: any) {
-  if (!node || !isVec2(node.pos) || !isVec2(node.size)) return null
-
-  const slotHeight = (LiteGraph as any).NODE_SLOT_HEIGHT ?? 20
-  const maxSlots = Math.max(Array.isArray(node.inputs) ? node.inputs.length : 0, Array.isArray(node.outputs) ? node.outputs.length : 0)
-  const startY = Math.max(8, Math.ceil(maxSlots * slotHeight + 8))
-
+  if (!node || !overlayLayout || !isVec2(node.pos)) return null
   const scale = canvas.ds.scale
-  const left = (node.pos[0] + 10 + canvas.ds.offset[0]) * scale
-  const top = (node.pos[1] + startY + canvas.ds.offset[1]) * scale
-  const width = Math.max(180, (node.size[0] - 20) * scale)
-  const height = Math.max(80, (node.size[1] - startY - 12) * scale)
-  return { left, top, width, height }
+  const left = (node.pos[0] + PARAM_PADDING_X + canvas.ds.offset[0]) * scale
+  const top = (node.pos[1] + overlayLayout.startY + canvas.ds.offset[1]) * scale
+  return { left, top, width: overlayLayout.boxWidth, height: overlayLayout.contentHeight, scale }
 }
 
 function updateNodeOverlay() {
-  if (!nodeOverlayVisible || !selectedNode) return
+  if (!nodeOverlayVisible || !selectedNode || !overlayLayout) return
   if (overlayInteracting) return
   const layout = computeOverlayLayout(selectedNode)
   if (!layout) return
@@ -614,15 +769,15 @@ function updateNodeOverlay() {
     !prev ||
     Math.abs(prev.left - layout.left) > 0.5 ||
     Math.abs(prev.top - layout.top) > 0.5 ||
+    Math.abs(prev.scale - layout.scale) > 0.0001 ||
     Math.abs(prev.width - layout.width) > 0.5 ||
     Math.abs(prev.height - layout.height) > 0.5
   if (!changed) return
   lastOverlayLayout = layout
 
-  nodeOverlayEl.style.left = `${layout.left}px`
-  nodeOverlayEl.style.top = `${layout.top}px`
   nodeOverlayEl.style.width = `${layout.width}px`
   nodeOverlayEl.style.height = `${layout.height}px`
+  nodeOverlayEl.style.transform = `translate(${layout.left}px, ${layout.top}px) scale(${layout.scale})`
 }
 
 function startOverlaySync() {
@@ -663,7 +818,7 @@ function showActiveTabSummary() {
     selectedNode = null
     copyParamsBtn.disabled = true
     showParamsText('')
-    nodeOverlayTextEl.textContent = ''
+    clearNodeOverlay()
     setNodeOverlayVisible(false)
     return
   }
@@ -675,7 +830,7 @@ function showActiveTabSummary() {
   selectedNode = null
   copyParamsBtn.disabled = true
   showParamsText('')
-  nodeOverlayTextEl.textContent = ''
+  clearNodeOverlay()
   setNodeOverlayVisible(false)
 }
 
@@ -686,8 +841,8 @@ canvas.onNodeSelected = (node: any) => {
   copyParamsBtn.disabled = false
   const text = nodeParamsToText(node)
   showParamsText(text)
-  nodeOverlayTextEl.textContent = text
-  setNodeOverlayVisible(Boolean(text))
+  const overlayReady = renderNodeOverlay(node)
+  setNodeOverlayVisible(overlayReady)
   updateNodeOverlay()
 }
 
@@ -700,7 +855,8 @@ function nodeParamsToText(node: any) {
   return params
     .map((item) => {
       const value = item.kind === 'multiline' ? String(item.value ?? '') : formatParamValueForCopy(item.value)
-      return `${item.label}: ${value}`
+      if (item.kind === 'multiline') return value ? `${item.label}\n${value}` : item.label
+      return `${item.label}\t${value}`
     })
     .join('\n')
 }
@@ -715,22 +871,6 @@ copyParamsBtn.addEventListener('click', async () => {
   const ok = await copyText(text)
   if (ok) setStatus('Copied params')
 })
-
-for (const el of [nodeOverlayEl, nodeOverlayTextEl]) {
-  el.addEventListener('pointerdown', (event) => {
-    overlayInteracting = true
-    event.stopPropagation()
-  })
-  el.addEventListener('pointermove', (event) => event.stopPropagation())
-  el.addEventListener('pointerup', (event) => {
-    overlayInteracting = false
-    event.stopPropagation()
-  })
-  el.addEventListener('pointercancel', (event) => {
-    overlayInteracting = false
-    event.stopPropagation()
-  })
-}
 
 function pathToTitle(sourcePath: string) {
   const normalized = sourcePath.replace(/\\/g, '/')
