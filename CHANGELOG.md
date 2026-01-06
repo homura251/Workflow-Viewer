@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.1.7
+
+- UI: show node params as selectable text in sidebar.
+- UI: copy sidebar JSON / node params to clipboard.
+- Rendering: ComfyUI-style type colors; HiDPI canvas keeps text crisp.
+
 ## v0.1.6
 
 - UI: copy sidebar JSON / node params to clipboard.

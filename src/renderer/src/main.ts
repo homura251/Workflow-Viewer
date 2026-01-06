@@ -21,6 +21,7 @@ type ViewerParamItem = {
 
 const statusEl = document.getElementById('status')!
 const hintEl = document.getElementById('hint')!
+const paramsEl = document.getElementById('params') as HTMLPreElement
 const detailsEl = document.getElementById('details') as HTMLPreElement
 const openBtn = document.getElementById('open-btn') as HTMLButtonElement
 const fitBtn = document.getElementById('fit-btn') as HTMLButtonElement
@@ -550,6 +551,10 @@ function showSelection(value: unknown) {
   detailsEl.textContent = value ? safeStringify(value) : '(none)'
 }
 
+function showParamsText(text: string) {
+  paramsEl.textContent = text ? text : '(none)'
+}
+
 let selectedNode: any | null = null
 
 function toNodeDetails(node: any) {
@@ -573,6 +578,7 @@ function showActiveTabSummary() {
     showSelection(null)
     selectedNode = null
     copyParamsBtn.disabled = true
+    showParamsText('')
     return
   }
   const workflow: any = tab.workflow
@@ -582,6 +588,7 @@ function showActiveTabSummary() {
   })
   selectedNode = null
   copyParamsBtn.disabled = true
+  showParamsText('')
 }
 
 canvas.onNodeSelected = (node: any) => {
@@ -589,6 +596,7 @@ canvas.onNodeSelected = (node: any) => {
   showSelection(toNodeDetails(node))
   selectedNode = node
   copyParamsBtn.disabled = false
+  showParamsText(nodeParamsToText(node))
 }
 
 canvas.onNodeDeselected = () => showActiveTabSummary()

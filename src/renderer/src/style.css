@@ -179,6 +179,15 @@ body {
   gap: 10px;
 }
 
+.sidebar-section-title {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
 .sidebar-actions {
   display: inline-flex;
   gap: 8px;
@@ -203,6 +212,10 @@ body {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   font-size: 12px;
   line-height: 1.5;
+}
+
+.details-params {
+  max-height: 40%;
 }
 
 .statusbar {
