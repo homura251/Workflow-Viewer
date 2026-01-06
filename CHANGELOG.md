@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.11
+
+- Interaction: prevent canvas panning while selecting overlay text (pan only via MMB or Space+LMB).
+
 ## v0.1.10
 
 - Interaction: drag node by title bar only (overlay won’t drag nodes).

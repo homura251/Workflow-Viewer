@@ -560,6 +560,7 @@ function showParamsText(text: string) {
 let selectedNode: any | null = null
 let nodeOverlayVisible = false
 let overlaySyncRunning = false
+let overlayInteracting = false
 let lastOverlayLayout: { left: number; top: number; width: number; height: number } | null = null
 
 function setNodeOverlayVisible(visible: boolean) {
@@ -587,6 +588,7 @@ function computeOverlayLayout(node: any) {
 
 function updateNodeOverlay() {
   if (!nodeOverlayVisible || !selectedNode) return
+  if (overlayInteracting) return
   const layout = computeOverlayLayout(selectedNode)
   if (!layout) return
 
@@ -698,9 +700,19 @@ copyParamsBtn.addEventListener('click', async () => {
 })
 
 for (const el of [nodeOverlayEl, nodeOverlayTextEl]) {
-  el.addEventListener('pointerdown', (event) => event.stopPropagation())
+  el.addEventListener('pointerdown', (event) => {
+    overlayInteracting = true
+    event.stopPropagation()
+  })
   el.addEventListener('pointermove', (event) => event.stopPropagation())
-  el.addEventListener('pointerup', (event) => event.stopPropagation())
+  el.addEventListener('pointerup', (event) => {
+    overlayInteracting = false
+    event.stopPropagation()
+  })
+  el.addEventListener('pointercancel', (event) => {
+    overlayInteracting = false
+    event.stopPropagation()
+  })
 }
 
 function pathToTitle(sourcePath: string) {
@@ -1104,8 +1116,8 @@ canvasEl.addEventListener(
 )
 
 // LMB drag behavior:
-// - If node is already selected: drag moves selected node(s)
-// - If node is not selected (even if click is on the node): drag pans the canvas
+// - Drag node(s) only when the node is already selected and the drag starts from its title bar
+// - Canvas panning is only via MMB or Space+LMB (ComfyUI-like)
 canvasEl.addEventListener(
   'pointerdown',
   (event) => {
@@ -1114,8 +1126,11 @@ canvasEl.addEventListener(
     if (activeDrag) return
 
     const node = getNodeUnderPointer(event)
-    const mode: 'pan' | 'node' = node && isNodeSelected(node) && isInNodeTitleBar(node, event) ? 'node' : 'pan'
-    dragCandidate = { mode, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY }
+    if (!node || !isNodeSelected(node) || !isInNodeTitleBar(node, event)) {
+      dragCandidate = null
+      return
+    }
+    dragCandidate = { mode: 'node', pointerId: event.pointerId, startX: event.clientX, startY: event.clientY }
   },
   true
 )
@@ -1131,8 +1146,7 @@ canvasEl.addEventListener(
     const dy = event.clientY - dragCandidate.startY
     if (dx * dx + dy * dy <= DRAG_THRESHOLD_SQ) return
 
-    if (dragCandidate.mode === 'node') beginNodeDrag(event.pointerId, dragCandidate.startX, dragCandidate.startY)
-    else beginPan(event.pointerId, dragCandidate.startX, dragCandidate.startY)
+    beginNodeDrag(event.pointerId, dragCandidate.startX, dragCandidate.startY)
 
     canvasEl.setPointerCapture(event.pointerId)
     dragCandidate = null
