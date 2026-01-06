@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.1.9
+
+- Interaction: drag node by title bar only (overlay won’t drag nodes).
+- UI: node params overlay is selectable (z-index/user-select fixes).
+
 ## v0.1.8
 
 - UI: show node params as selectable text on the canvas (overlay).

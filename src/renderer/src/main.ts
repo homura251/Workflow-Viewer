@@ -979,6 +979,17 @@ function isNodeSelected(node: any) {
   return Boolean(node && (canvas as any).selected_nodes && (canvas as any).selected_nodes[node.id])
 }
 
+function isInNodeTitleBar(node: any, event: PointerEvent) {
+  if (!node || !Array.isArray(node.pos) || !Array.isArray(node.size)) return false
+  const canvasAny = canvas as any
+  if (typeof canvasAny.convertEventToCanvasOffset !== 'function') return false
+  const pos: [number, number] = canvasAny.convertEventToCanvasOffset(event)
+  const titleHeight = (LiteGraph as any).NODE_TITLE_HEIGHT ?? 30
+  const x = pos[0]
+  const y = pos[1]
+  return x >= node.pos[0] && x <= node.pos[0] + node.size[0] && y >= node.pos[1] - titleHeight && y <= node.pos[1]
+}
+
 function beginPan(pointerId: number, startX: number, startY: number) {
   activeDrag = { mode: 'pan', pointerId, startX, startY, offsetX: canvas.ds.offset[0], offsetY: canvas.ds.offset[1] }
   setCanvasCursor()
@@ -1099,7 +1110,7 @@ canvasEl.addEventListener(
     if (activeDrag) return
 
     const node = getNodeUnderPointer(event)
-    const mode: 'pan' | 'node' = node && isNodeSelected(node) ? 'node' : 'pan'
+    const mode: 'pan' | 'node' = node && isNodeSelected(node) && isInNodeTitleBar(node, event) ? 'node' : 'pan'
     dragCandidate = { mode, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY }
   },
   true
