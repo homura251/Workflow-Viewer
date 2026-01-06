@@ -571,7 +571,7 @@ function setNodeOverlayVisible(visible: boolean) {
 }
 
 function computeOverlayLayout(node: any) {
-  if (!node || !Array.isArray(node.pos) || !Array.isArray(node.size)) return null
+  if (!node || !isVec2(node.pos) || !isVec2(node.size)) return null
 
   const slotHeight = (LiteGraph as any).NODE_SLOT_HEIGHT ?? 20
   const maxSlots = Math.max(Array.isArray(node.inputs) ? node.inputs.length : 0, Array.isArray(node.outputs) ? node.outputs.length : 0)
@@ -676,7 +676,7 @@ canvas.onNodeDeselected = () => showActiveTabSummary()
 
 function nodeParamsToText(node: any) {
   if (!node || typeof node !== 'object') return ''
-  const params = buildViewerParams(node)
+  const params = Array.isArray((node as any).__viewerParams) ? ((node as any).__viewerParams as ViewerParamItem[]) : buildViewerParams(node)
   if (!params.length) return ''
   return params
     .map((item) => {
@@ -967,6 +967,10 @@ type DragCandidate = { mode: 'pan' | 'node'; pointerId: number; startX: number; 
 let dragCandidate: DragCandidate = null
 let activeDrag: ActiveDrag | null = null
 
+function isVec2(value: any): value is { 0: number; 1: number } {
+  return Boolean(value && typeof value[0] === 'number' && typeof value[1] === 'number')
+}
+
 function getNodeUnderPointer(event: PointerEvent) {
   const canvasAny = canvas as any
   const graphAny = graph as any
@@ -980,7 +984,7 @@ function isNodeSelected(node: any) {
 }
 
 function isInNodeTitleBar(node: any, event: PointerEvent) {
-  if (!node || !Array.isArray(node.pos) || !Array.isArray(node.size)) return false
+  if (!node || !isVec2(node.pos) || !isVec2(node.size)) return false
   const canvasAny = canvas as any
   if (typeof canvasAny.convertEventToCanvasOffset !== 'function') return false
   const pos: [number, number] = canvasAny.convertEventToCanvasOffset(event)
@@ -1007,7 +1011,7 @@ function beginNodeDrag(pointerId: number, startX: number, startY: number) {
     pointerId,
     startX,
     startY,
-    nodes: nodes.map((node: any) => ({ node, x: node.pos?.[0] ?? 0, y: node.pos?.[1] ?? 0 }))
+    nodes: nodes.map((node: any) => ({ node, x: isVec2(node?.pos) ? node.pos[0] : 0, y: isVec2(node?.pos) ? node.pos[1] : 0 }))
   }
   setCanvasCursor()
 }
