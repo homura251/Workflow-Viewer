@@ -293,16 +293,19 @@ function ensureAllNodeTypes(workflow: any) {
   for (const type of types) {
     if (LiteGraph.registered_node_types?.[type]) continue
     const title = type.split('/').at(-1) ?? type
+    const accent = stableTypeColor(type)
+    const titleColor = dimHex(accent, 0.65)
     class UnknownNode extends (LGraphNode as any) {
       constructor() {
         super()
         this.title = title
-        this.color = '#6b2b2b'
-        this.bgcolor = '#221317'
+        this.color = titleColor
+        this.bgcolor = '#151a24'
+        this.boxcolor = 'rgba(255,255,255,0.08)'
       }
     }
     ;(UnknownNode as any).title = title
-    ;(UnknownNode as any).desc = 'Unknown ComfyUI node (viewer fallback)'
+    ;(UnknownNode as any).desc = 'ComfyUI node (viewer stub type)'
     LiteGraph.registerNodeType(type, UnknownNode as any)
   }
 }
