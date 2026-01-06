@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.8
+
+- UI: show node params as selectable text on the canvas (overlay).
+
 ## v0.1.7
 
 - UI: show node params as selectable text in sidebar.

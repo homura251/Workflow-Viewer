@@ -33,6 +33,8 @@ const tabsEl = document.getElementById('tabs')!
 const dropTarget = document.getElementById('drop-target')!
 const canvasEl = document.getElementById('graph-canvas') as HTMLCanvasElement
 const mainLayoutEl = document.querySelector('.main') as HTMLElement
+const nodeOverlayEl = document.getElementById('node-overlay') as HTMLDivElement
+const nodeOverlayTextEl = document.getElementById('node-overlay-text') as HTMLPreElement
 
 type Rgb = { r: number; g: number; b: number }
 
@@ -556,6 +558,69 @@ function showParamsText(text: string) {
 }
 
 let selectedNode: any | null = null
+let nodeOverlayVisible = false
+let overlaySyncRunning = false
+let lastOverlayLayout: { left: number; top: number; width: number; height: number } | null = null
+
+function setNodeOverlayVisible(visible: boolean) {
+  nodeOverlayVisible = visible
+  nodeOverlayEl.classList.toggle('hidden', !visible)
+  nodeOverlayEl.setAttribute('aria-hidden', visible ? 'false' : 'true')
+  if (visible) startOverlaySync()
+  else stopOverlaySync()
+}
+
+function computeOverlayLayout(node: any) {
+  if (!node || !Array.isArray(node.pos) || !Array.isArray(node.size)) return null
+
+  const slotHeight = (LiteGraph as any).NODE_SLOT_HEIGHT ?? 20
+  const maxSlots = Math.max(Array.isArray(node.inputs) ? node.inputs.length : 0, Array.isArray(node.outputs) ? node.outputs.length : 0)
+  const startY = Math.max(8, Math.ceil(maxSlots * slotHeight + 8))
+
+  const scale = canvas.ds.scale
+  const left = (node.pos[0] + 10 + canvas.ds.offset[0]) * scale
+  const top = (node.pos[1] + startY + canvas.ds.offset[1]) * scale
+  const width = Math.max(180, (node.size[0] - 20) * scale)
+  const height = Math.max(80, (node.size[1] - startY - 12) * scale)
+  return { left, top, width, height }
+}
+
+function updateNodeOverlay() {
+  if (!nodeOverlayVisible || !selectedNode) return
+  const layout = computeOverlayLayout(selectedNode)
+  if (!layout) return
+
+  const prev = lastOverlayLayout
+  const changed =
+    !prev ||
+    Math.abs(prev.left - layout.left) > 0.5 ||
+    Math.abs(prev.top - layout.top) > 0.5 ||
+    Math.abs(prev.width - layout.width) > 0.5 ||
+    Math.abs(prev.height - layout.height) > 0.5
+  if (!changed) return
+  lastOverlayLayout = layout
+
+  nodeOverlayEl.style.left = `${layout.left}px`
+  nodeOverlayEl.style.top = `${layout.top}px`
+  nodeOverlayEl.style.width = `${layout.width}px`
+  nodeOverlayEl.style.height = `${layout.height}px`
+}
+
+function startOverlaySync() {
+  if (overlaySyncRunning) return
+  overlaySyncRunning = true
+  const tick = () => {
+    if (!overlaySyncRunning) return
+    updateNodeOverlay()
+    requestAnimationFrame(tick)
+  }
+  requestAnimationFrame(tick)
+}
+
+function stopOverlaySync() {
+  overlaySyncRunning = false
+  lastOverlayLayout = null
+}
 
 function toNodeDetails(node: any) {
   if (!node || typeof node !== 'object') return node
@@ -579,6 +644,8 @@ function showActiveTabSummary() {
     selectedNode = null
     copyParamsBtn.disabled = true
     showParamsText('')
+    nodeOverlayTextEl.textContent = ''
+    setNodeOverlayVisible(false)
     return
   }
   const workflow: any = tab.workflow
@@ -589,6 +656,8 @@ function showActiveTabSummary() {
   selectedNode = null
   copyParamsBtn.disabled = true
   showParamsText('')
+  nodeOverlayTextEl.textContent = ''
+  setNodeOverlayVisible(false)
 }
 
 canvas.onNodeSelected = (node: any) => {
@@ -596,7 +665,11 @@ canvas.onNodeSelected = (node: any) => {
   showSelection(toNodeDetails(node))
   selectedNode = node
   copyParamsBtn.disabled = false
-  showParamsText(nodeParamsToText(node))
+  const text = nodeParamsToText(node)
+  showParamsText(text)
+  nodeOverlayTextEl.textContent = text
+  setNodeOverlayVisible(Boolean(text))
+  updateNodeOverlay()
 }
 
 canvas.onNodeDeselected = () => showActiveTabSummary()
@@ -623,6 +696,12 @@ copyParamsBtn.addEventListener('click', async () => {
   const ok = await copyText(text)
   if (ok) setStatus('Copied params')
 })
+
+for (const el of [nodeOverlayEl, nodeOverlayTextEl]) {
+  el.addEventListener('pointerdown', (event) => event.stopPropagation())
+  el.addEventListener('pointermove', (event) => event.stopPropagation())
+  el.addEventListener('pointerup', (event) => event.stopPropagation())
+}
 
 function pathToTitle(sourcePath: string) {
   const normalized = sourcePath.replace(/\\/g, '/')

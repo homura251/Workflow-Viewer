@@ -146,6 +146,30 @@ body {
   display: block;
 }
 
+.node-overlay {
+  position: absolute;
+  pointer-events: auto;
+  user-select: text;
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(15, 18, 26, 0.72);
+  backdrop-filter: blur(6px);
+  max-width: 560px;
+  max-height: 320px;
+  overflow: auto;
+}
+
+.node-overlay-text {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: rgba(230, 237, 243, 0.95);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .hint {
   position: absolute;
   inset: 0;
