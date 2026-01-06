@@ -272,6 +272,22 @@ const COMFY_WIDGET_LABELS: Record<string, string[]> = {
   VAEDecode: []
 }
 
+function shouldOmitWidgetParam(label: string, value: unknown) {
+  const key = label.trim().toLowerCase()
+  if (!key) return false
+
+  // Common UI-only controls in ComfyUI widgets (not workflow params)
+  if (key === 'upload') return true
+  if (key === 'choose file') return true
+  if (key === 'open') return true
+  if (key === 'button') return true
+
+  // Some nodes store a UI hint like "image" / "mask" in the upload slot.
+  if (key === 'upload' && typeof value === 'string') return true
+
+  return false
+}
+
 function setStatus(text: string) {
   statusEl.textContent = text
 }
@@ -385,6 +401,7 @@ function buildViewerParams(node: any): ViewerParamItem[] {
     for (let i = 0; i < widgetsValues.length; i++) {
       const label = labels[i] ?? `w${i}`
       const raw = widgetsValues[i]
+      if (shouldOmitWidgetParam(label, raw)) continue
       const kind: ViewerParamItem['kind'] =
         label === 'text' || (typeof raw === 'string' && raw.includes('\n')) ? 'multiline' : 'inline'
       out.push({ label, value: raw, kind })
