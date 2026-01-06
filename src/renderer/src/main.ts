@@ -272,6 +272,22 @@ const COMFY_WIDGET_LABELS: Record<string, string[]> = {
   VAEDecode: []
 }
 
+function shouldOmitWidgetParam(label: string, value: unknown) {
+  const lower = label.trim().toLowerCase()
+  if (!lower) return false
+  if (lower === 'upload') return true
+  if (lower === 'choose file') return true
+  if (lower === 'open') return true
+  if (lower === 'button') return true
+
+  if (typeof value === 'string') {
+    const v = value.trim().toLowerCase()
+    if (lower === 'upload' && (v === 'image' || v === 'mask' || v === 'latent')) return true
+  }
+
+  return false
+}
+
 function setStatus(text: string) {
   statusEl.textContent = text
 }
@@ -385,6 +401,7 @@ function buildViewerParams(node: any): ViewerParamItem[] {
     for (let i = 0; i < widgetsValues.length; i++) {
       const label = labels[i] ?? `w${i}`
       const raw = widgetsValues[i]
+      if (shouldOmitWidgetParam(label, raw)) continue
       const kind: ViewerParamItem['kind'] =
         label === 'text' || (typeof raw === 'string' && raw.includes('\n')) ? 'multiline' : 'inline'
       out.push({ label, value: raw, kind })
