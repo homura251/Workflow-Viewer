@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.2
+
+- Release pipeline: always publish Windows zip artifact (packager-based).
+
 ## v0.1.1
 
 - Show node parameters in-node (fallback overlay).
@@ -8,4 +12,3 @@
 ## v0.1.0
 
 - Initial MVP: open ComfyUI workflow `.json` / `.png` and render with LiteGraph.
-

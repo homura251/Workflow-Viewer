@@ -1,6 +1,7 @@
 name: build
 
 on:
+  workflow_dispatch:
   push:
     tags:
       - "v*"
@@ -28,7 +29,14 @@ jobs:
       - name: Install
         run: npm ci
 
-      - name: Build and package
+      - name: Build and package (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          npm run pack:win
+          powershell -NoProfile -Command "$src='release\\ComfyUI Workflow Viewer-win32-x64\\*'; $dst='release\\ComfyUI-Workflow-Viewer-win32-x64.zip'; if(Test-Path $dst){Remove-Item $dst -Force}; Compress-Archive -Path $src -DestinationPath $dst -Force"
+
+      - name: Build and package (macOS/Linux)
+        if: matrix.os != 'windows-latest'
         run: npm run dist
 
       - name: Release
