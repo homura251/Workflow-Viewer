@@ -176,7 +176,8 @@ LiteGraph.NODE_DEFAULT_SHAPE = 'card'
 
 const graph = new LGraph()
 const canvas = new LGraphCanvas(canvasEl, graph)
-;(canvas as any).allow_dragcanvas = true
+;(canvas as any).allow_dragcanvas = false
+;(canvas as any).allow_dragnodes = false
 ;(canvas as any).render_shadows = false
 ;(canvas as any).render_connections_shadows = false
 ;(canvas as any).connections_width = 3.5
@@ -801,20 +802,64 @@ canvasEl.addEventListener(
 )
 
 let spaceDown = false
-let panningPointerId: number | null = null
-let panStart: { x: number; y: number; offsetX: number; offsetY: number } | null = null
 let emptyClickCandidate: { pointerId: number; x: number; y: number } | null = null
 
+const DRAG_THRESHOLD_SQ = 9
+
+type ActiveDrag =
+  | { mode: 'pan'; pointerId: number; startX: number; startY: number; offsetX: number; offsetY: number }
+  | { mode: 'node'; pointerId: number; startX: number; startY: number; nodes: Array<{ node: any; x: number; y: number }> }
+
+type DragCandidate = { mode: 'pan' | 'node'; pointerId: number; startX: number; startY: number } | null
+
+let dragCandidate: DragCandidate = null
+let activeDrag: ActiveDrag | null = null
+
+function getNodeUnderPointer(event: PointerEvent) {
+  const canvasAny = canvas as any
+  const graphAny = graph as any
+  if (typeof canvasAny.convertEventToCanvasOffset !== 'function') return null
+  const pos: [number, number] = canvasAny.convertEventToCanvasOffset(event)
+  return typeof graphAny.getNodeOnPos === 'function' ? graphAny.getNodeOnPos(pos[0], pos[1]) : null
+}
+
+function isNodeSelected(node: any) {
+  return Boolean(node && (canvas as any).selected_nodes && (canvas as any).selected_nodes[node.id])
+}
+
+function beginPan(pointerId: number, startX: number, startY: number) {
+  activeDrag = { mode: 'pan', pointerId, startX, startY, offsetX: canvas.ds.offset[0], offsetY: canvas.ds.offset[1] }
+  setCanvasCursor()
+}
+
+function beginNodeDrag(pointerId: number, startX: number, startY: number) {
+  const selectedMap: Record<string, any> = ((canvas as any).selected_nodes ?? {}) as any
+  const nodes = Object.values(selectedMap).filter(Boolean)
+  if (!nodes.length) {
+    beginPan(pointerId, startX, startY)
+    return
+  }
+  activeDrag = {
+    mode: 'node',
+    pointerId,
+    startX,
+    startY,
+    nodes: nodes.map((node: any) => ({ node, x: node.pos?.[0] ?? 0, y: node.pos?.[1] ?? 0 }))
+  }
+  setCanvasCursor()
+}
+
 function setCanvasCursor() {
-  if (panningPointerId != null) canvasEl.style.cursor = 'grabbing'
+  if (activeDrag?.mode === 'pan') canvasEl.style.cursor = 'grabbing'
+  else if (activeDrag?.mode === 'node') canvasEl.style.cursor = 'move'
   else if (spaceDown) canvasEl.style.cursor = 'grab'
   else canvasEl.style.cursor = ''
 }
 
 window.addEventListener('blur', () => {
   spaceDown = false
-  panningPointerId = null
-  panStart = null
+  dragCandidate = null
+  activeDrag = null
   setCanvasCursor()
 })
 
@@ -830,7 +875,7 @@ window.addEventListener('keydown', (event) => {
 window.addEventListener('keyup', (event) => {
   if (event.code !== 'Space') return
   spaceDown = false
-  if (panningPointerId == null) setCanvasCursor()
+  if (!activeDrag) setCanvasCursor()
 })
 
 canvasEl.addEventListener(
@@ -839,8 +884,8 @@ canvasEl.addEventListener(
     const shouldPan = event.button === 1 || (spaceDown && event.button === 0)
     if (!shouldPan) return
 
-    panningPointerId = event.pointerId
-    panStart = { x: event.clientX, y: event.clientY, offsetX: canvas.ds.offset[0], offsetY: canvas.ds.offset[1] }
+    dragCandidate = null
+    beginPan(event.pointerId, event.clientX, event.clientY)
     canvasEl.setPointerCapture(event.pointerId)
     setCanvasCursor()
     event.preventDefault()
@@ -863,14 +908,70 @@ canvasEl.addEventListener(
 canvasEl.addEventListener(
   'pointermove',
   (event) => {
-    if (panningPointerId == null || panStart == null) return
-    if (event.pointerId !== panningPointerId) return
-    const dx = event.clientX - panStart.x
-    const dy = event.clientY - panStart.y
-    canvas.ds.offset[0] = panStart.offsetX + dx / canvas.ds.scale
-    canvas.ds.offset[1] = panStart.offsetY + dy / canvas.ds.scale
-    canvas.draw(true, true)
-    saveActiveTabView()
+    if (!activeDrag) return
+    if (event.pointerId !== activeDrag.pointerId) return
+
+    const dx = event.clientX - activeDrag.startX
+    const dy = event.clientY - activeDrag.startY
+
+    if (activeDrag.mode === 'pan') {
+      canvas.ds.offset[0] = activeDrag.offsetX + dx / canvas.ds.scale
+      canvas.ds.offset[1] = activeDrag.offsetY + dy / canvas.ds.scale
+      canvas.draw(true, true)
+      saveActiveTabView()
+    } else {
+      for (const item of activeDrag.nodes) {
+        const node = item.node
+        if (!node?.pos) node.pos = [item.x, item.y]
+        node.pos[0] = item.x + dx / canvas.ds.scale
+        node.pos[1] = item.y + dy / canvas.ds.scale
+      }
+      ;(graph as any).change?.()
+      canvas.draw(true, true)
+    }
+
+    event.preventDefault()
+    event.stopImmediatePropagation()
+  },
+  true
+)
+
+// LMB drag behavior:
+// - If node is already selected: drag moves selected node(s)
+// - If node is not selected (even if click is on the node): drag pans the canvas
+canvasEl.addEventListener(
+  'pointerdown',
+  (event) => {
+    if (event.button !== 0) return
+    if (spaceDown) return
+    if (activeDrag) return
+
+    const node = getNodeUnderPointer(event)
+    const mode: 'pan' | 'node' = node && isNodeSelected(node) ? 'node' : 'pan'
+    dragCandidate = { mode, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY }
+  },
+  true
+)
+
+canvasEl.addEventListener(
+  'pointermove',
+  (event) => {
+    if (!dragCandidate) return
+    if (event.pointerId !== dragCandidate.pointerId) return
+    if (activeDrag) return
+
+    const dx = event.clientX - dragCandidate.startX
+    const dy = event.clientY - dragCandidate.startY
+    if (dx * dx + dy * dy <= DRAG_THRESHOLD_SQ) return
+
+    if (dragCandidate.mode === 'node') beginNodeDrag(event.pointerId, dragCandidate.startX, dragCandidate.startY)
+    else beginPan(event.pointerId, dragCandidate.startX, dragCandidate.startY)
+
+    canvasEl.setPointerCapture(event.pointerId)
+    dragCandidate = null
+    emptyClickCandidate = null
+    event.preventDefault()
+    event.stopImmediatePropagation()
   },
   true
 )
@@ -878,7 +979,7 @@ canvasEl.addEventListener(
 function isEmptySpaceClick(event: PointerEvent) {
   if (event.button !== 0) return false
   if (spaceDown) return false
-  if (panningPointerId != null) return false
+  if (activeDrag?.mode === 'pan') return false
 
   const canvasAny = canvas as any
   const graphAny = graph as any
@@ -930,11 +1031,15 @@ canvasEl.addEventListener(
 canvasEl.addEventListener(
   'pointerup',
   (event) => {
-    if (panningPointerId == null) return
-    if (event.pointerId !== panningPointerId) return
-    panningPointerId = null
-    panStart = null
-    setCanvasCursor()
+    if (activeDrag && event.pointerId === activeDrag.pointerId) {
+      activeDrag = null
+      dragCandidate = null
+      setCanvasCursor()
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      return
+    }
+    if (dragCandidate && event.pointerId === dragCandidate.pointerId) dragCandidate = null
   },
   true
 )
@@ -942,17 +1047,21 @@ canvasEl.addEventListener(
 canvasEl.addEventListener(
   'pointercancel',
   (event) => {
-    if (panningPointerId == null) return
-    if (event.pointerId !== panningPointerId) return
-    panningPointerId = null
-    panStart = null
-    setCanvasCursor()
+    if (activeDrag && event.pointerId === activeDrag.pointerId) {
+      activeDrag = null
+      dragCandidate = null
+      setCanvasCursor()
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      return
+    }
+    if (dragCandidate && event.pointerId === dragCandidate.pointerId) dragCandidate = null
   },
   true
 )
 
 canvasEl.addEventListener('contextmenu', (event) => {
-  if (panningPointerId != null) {
+  if (activeDrag?.mode === 'pan') {
     event.preventDefault()
     event.stopPropagation()
   }
