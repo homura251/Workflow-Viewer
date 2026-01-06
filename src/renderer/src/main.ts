@@ -423,12 +423,24 @@ function buildViewerParams(node: any): ViewerParamItem[] {
 }
 
 function normalizeNodeSize(node: any) {
-  if (!node || Array.isArray(node.size)) return
+  if (!node) return
+  if (Array.isArray(node.size) && node.size.length >= 2) return
+  const defaultW = (LiteGraph as any).NODE_WIDTH ?? 140
+  const defaultH = 60
   const size = node.size
-  if (!size || typeof size !== 'object') return
-  const w = (size as any)[0] ?? (size as any)['0']
-  const h = (size as any)[1] ?? (size as any)['1']
-  if (typeof w === 'number' && typeof h === 'number') node.size = [w, h]
+  if (!size) {
+    node.size = [defaultW, defaultH]
+    return
+  }
+  if (typeof size === 'object') {
+    const w = (size as any)[0] ?? (size as any)['0']
+    const h = (size as any)[1] ?? (size as any)['1']
+    if (typeof w === 'number' && typeof h === 'number') {
+      node.size = [w, h]
+      return
+    }
+  }
+  node.size = [defaultW, defaultH]
 }
 
 function wrapTextByWidth(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
@@ -640,7 +652,6 @@ function installParamOverlay(node: any) {
 
     const params: ViewerParamItem[] = this.__viewerParams ?? []
     if (!params.length) return
-    const suppressText = nodeOverlayVisible && selectedNode === this
 
     const titleHeight = (LiteGraph as any).NODE_TITLE_HEIGHT ?? 24
     const slotHeight = (LiteGraph as any).NODE_SLOT_HEIGHT ?? 20
@@ -650,6 +661,11 @@ function installParamOverlay(node: any) {
     let y = startY
 
     ctx.save()
+    if (Array.isArray((this as any).size)) {
+      ctx.beginPath()
+      ctx.rect(0, 0, (this as any).size[0] ?? 0, (this as any).size[1] ?? 0)
+      ctx.clip()
+    }
     ctx.font = PARAM_FONT
     const boxWidth = Math.max(40, (this.size?.[0] ?? 0) - PARAM_PADDING_X * 2)
 
@@ -676,28 +692,24 @@ function installParamOverlay(node: any) {
       ctx.stroke()
 
       if (item.kind === 'multiline') {
-        if (!suppressText) {
-          ctx.fillStyle = 'rgba(180,190,205,0.92)'
-          ctx.fillText(label, startX + PARAM_TEXT_PADDING, y + PARAM_LABEL_OFFSET_Y)
+        ctx.fillStyle = 'rgba(180,190,205,0.92)'
+        ctx.fillText(label, startX + PARAM_TEXT_PADDING, y + PARAM_LABEL_OFFSET_Y)
 
-          ctx.fillStyle = 'rgba(230,237,243,0.92)'
-          const textY = y + PARAM_TEXT_OFFSET_Y
-          const maxTextWidth = Math.max(10, boxWidth - PARAM_TEXT_PADDING * 2)
-          const wrapped = wrapTextByWidth(ctx, rawText, maxTextWidth).slice(0, MULTILINE_PREVIEW_LINES)
-          for (let i = 0; i < wrapped.length; i++)
-            ctx.fillText(wrapped[i]!, startX + PARAM_TEXT_PADDING, textY + i * PARAM_LINE_HEIGHT)
-        }
+        ctx.fillStyle = 'rgba(230,237,243,0.92)'
+        const textY = y + PARAM_TEXT_OFFSET_Y
+        const maxTextWidth = Math.max(10, boxWidth - PARAM_TEXT_PADDING * 2)
+        const wrapped = wrapTextByWidth(ctx, rawText, maxTextWidth).slice(0, MULTILINE_PREVIEW_LINES)
+        for (let i = 0; i < wrapped.length; i++)
+          ctx.fillText(wrapped[i]!, startX + PARAM_TEXT_PADDING, textY + i * PARAM_LINE_HEIGHT)
       } else {
-        if (!suppressText) {
-          const baselineY = y + PARAM_WIDGET_HEIGHT * 0.7
-          ctx.fillStyle = 'rgba(180,190,205,0.92)'
-          ctx.fillText(label, startX + PARAM_TEXT_PADDING, baselineY)
+        const baselineY = y + PARAM_WIDGET_HEIGHT * 0.7
+        ctx.fillStyle = 'rgba(180,190,205,0.92)'
+        ctx.fillText(label, startX + PARAM_TEXT_PADDING, baselineY)
 
-          ctx.fillStyle = 'rgba(230,237,243,0.92)'
-          ctx.textAlign = 'right'
-          ctx.fillText(String(rawText), startX + boxWidth - PARAM_TEXT_PADDING, baselineY)
-          ctx.textAlign = 'left'
-        }
+        ctx.fillStyle = 'rgba(230,237,243,0.92)'
+        ctx.textAlign = 'right'
+        ctx.fillText(String(rawText), startX + boxWidth - PARAM_TEXT_PADDING, baselineY)
+        ctx.textAlign = 'left'
       }
 
       y += boxHeight + PARAM_BOX_GAP
@@ -707,23 +719,34 @@ function installParamOverlay(node: any) {
   }
 
   const params = node.__viewerParams as ViewerParamItem[]
-  if (Array.isArray(node.size) && params.length) {
-    const slotHeight = (LiteGraph as any).NODE_SLOT_HEIGHT ?? 20
-    const maxSlots = Math.max(Array.isArray(node.inputs) ? node.inputs.length : 0, Array.isArray(node.outputs) ? node.outputs.length : 0)
-    let needed = Math.max(0, Math.ceil(maxSlots * slotHeight + 8)) + 12
-    for (const item of params.slice(0, PARAM_MAX_LINES)) {
-      needed +=
-        (item.kind === 'multiline'
-          ? PARAM_LINE_HEIGHT * MULTILINE_PREVIEW_LINES + PARAM_MULTILINE_EXTRA
-          : PARAM_WIDGET_HEIGHT) + PARAM_BOX_GAP
-    }
-    node.size[1] = Math.max(node.size[1] ?? 0, needed)
-  }
+  if (Array.isArray(node.size) && params.length) node.size[1] = Math.max(node.size[1] ?? 0, computeRequiredNodeHeight(node, params))
 }
 
 function decorateGraphNodes() {
   const nodes: any[] = (graph as any)._nodes ?? []
   for (const node of nodes) installParamOverlay(node)
+}
+
+function computeParamStartY(node: any) {
+  const slotHeight = (LiteGraph as any).NODE_SLOT_HEIGHT ?? 20
+  const maxSlots = Math.max(Array.isArray(node?.inputs) ? node.inputs.length : 0, Array.isArray(node?.outputs) ? node.outputs.length : 0)
+  return Math.max(8, Math.ceil(maxSlots * slotHeight + 8))
+}
+
+function computeParamBoxHeight(kind: ViewerParamItem['kind']) {
+  return kind === 'multiline'
+    ? PARAM_LINE_HEIGHT * MULTILINE_PREVIEW_LINES + PARAM_MULTILINE_EXTRA
+    : PARAM_WIDGET_HEIGHT
+}
+
+function computeRequiredNodeHeight(node: any, params: ViewerParamItem[]) {
+  const startY = computeParamStartY(node)
+  const items = params.slice(0, PARAM_MAX_LINES)
+  if (!items.length) return Math.max(node?.size?.[1] ?? 0, 60)
+  const contentHeight =
+    items.reduce((sum, item) => sum + computeParamBoxHeight(item.kind), 0) + PARAM_BOX_GAP * Math.max(0, items.length - 1)
+  const paddingBottom = 12
+  return startY + contentHeight + paddingBottom
 }
 
 function fitToContent() {
@@ -859,8 +882,8 @@ canvas.onNodeSelected = (node: any) => {
   copyParamsBtn.disabled = false
   const text = nodeParamsToText(node)
   showParamsText(text)
-  const overlayReady = renderNodeOverlay(node)
-  setNodeOverlayVisible(overlayReady)
+  clearNodeOverlay()
+  setNodeOverlayVisible(false)
   updateNodeOverlay()
 }
 
