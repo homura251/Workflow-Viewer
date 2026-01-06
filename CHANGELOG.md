@@ -1,12 +1,17 @@
 # Changelog
 
-## v0.1.2
+## v0.1.4
 
-- Release pipeline: always publish Windows zip artifact (packager-based).
+- Tabs: open multiple workflows, switch/close with menu + shortcuts.
+- Interaction: fix zoom center/pan scaling, click empty space clears node/group selection.
 
 ## v0.1.3
 
 - Release pipeline: stop uploading inner `.exe` (needs bundled `ffmpeg.dll`), publish only installer/portable exe + full zip.
+
+## v0.1.2
+
+- Release pipeline: always publish Windows zip artifact (packager-based).
 
 ## v0.1.1
 

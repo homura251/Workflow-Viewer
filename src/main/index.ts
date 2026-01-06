@@ -8,6 +8,20 @@ type WorkflowPayload =
   | { ok: true; sourcePath: string; workflow: unknown }
   | { ok: false; sourcePath?: string; error: string }
 
+type WorkflowCommand =
+  | 'zoom-in'
+  | 'zoom-out'
+  | 'reset-view'
+  | 'fit'
+  | 'toggle-sidebar'
+  | 'close-tab'
+  | 'next-tab'
+  | 'prev-tab'
+
+function sendWorkflowCommand(window: BrowserWindow, command: WorkflowCommand) {
+  window.webContents.send('workflow:command', command)
+}
+
 function buildMenu(window: BrowserWindow) {
   const template: Electron.MenuItemConstructorOptions[] = [
     {
@@ -28,6 +42,11 @@ function buildMenu(window: BrowserWindow) {
             window.webContents.send('workflow:open-path', result.filePaths[0]!)
           }
         },
+        {
+          label: 'Close Tab',
+          accelerator: 'CmdOrCtrl+W',
+          click: () => sendWorkflowCommand(window, 'close-tab')
+        },
         { type: 'separator' },
         { role: 'quit' }
       ]
@@ -40,9 +59,43 @@ function buildMenu(window: BrowserWindow) {
         { type: 'separator' },
         { role: 'toggleDevTools' },
         { type: 'separator' },
-        { role: 'resetZoom' },
-        { role: 'zoomIn' },
-        { role: 'zoomOut' },
+        {
+          label: 'Zoom In',
+          accelerator: 'CmdOrCtrl+=',
+          click: () => sendWorkflowCommand(window, 'zoom-in')
+        },
+        {
+          label: 'Zoom Out',
+          accelerator: 'CmdOrCtrl+-',
+          click: () => sendWorkflowCommand(window, 'zoom-out')
+        },
+        {
+          label: 'Reset View',
+          accelerator: 'CmdOrCtrl+0',
+          click: () => sendWorkflowCommand(window, 'reset-view')
+        },
+        {
+          label: 'Fit to Content',
+          accelerator: 'CmdOrCtrl+Shift+F',
+          click: () => sendWorkflowCommand(window, 'fit')
+        },
+        { type: 'separator' },
+        {
+          label: 'Toggle Sidebar',
+          accelerator: 'CmdOrCtrl+B',
+          click: () => sendWorkflowCommand(window, 'toggle-sidebar')
+        },
+        { type: 'separator' },
+        {
+          label: 'Next Tab',
+          accelerator: 'Ctrl+Tab',
+          click: () => sendWorkflowCommand(window, 'next-tab')
+        },
+        {
+          label: 'Previous Tab',
+          accelerator: 'Ctrl+Shift+Tab',
+          click: () => sendWorkflowCommand(window, 'prev-tab')
+        },
         { type: 'separator' },
         { role: 'togglefullscreen' }
       ]

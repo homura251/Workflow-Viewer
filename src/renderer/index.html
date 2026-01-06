@@ -15,13 +15,19 @@
         <div class="title">ComfyUI Workflow Viewer</div>
         <div class="spacer"></div>
         <button id="open-btn" class="btn">Open…</button>
+        <button id="fit-btn" class="btn" title="Fit to content (Ctrl+Shift+F)">Fit</button>
+        <button id="reset-btn" class="btn" title="Reset view (Ctrl+0)">Reset</button>
+        <button id="toggle-sidebar-btn" class="btn" title="Toggle sidebar (Ctrl+B)">Sidebar</button>
       </header>
+
+      <nav class="tabs" id="tabs" aria-label="Open workflows"></nav>
 
       <main class="main">
         <section class="canvas-wrap" id="drop-target">
           <canvas id="graph-canvas"></canvas>
           <div class="hint" id="hint">
-            Drop a <code>.json</code>/<code>.png</code> workflow here, or click <b>Open…</b>
+            Drop a <code>.json</code>/<code>.png</code> workflow here, or click <b>Open…</b>.<br />
+            Pan: <b>MMB</b> or <b>Space</b> + LMB · Zoom: <b>Wheel</b> · Select: <b>Click</b>
           </div>
         </section>
         <aside class="sidebar">

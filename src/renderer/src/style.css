@@ -13,6 +13,10 @@
   box-sizing: border-box;
 }
 
+.hidden {
+  display: none !important;
+}
+
 html,
 body {
   height: 100%;
@@ -59,11 +63,70 @@ body {
   border-color: rgba(255, 255, 255, 0.18);
 }
 
+.tabs {
+  height: 34px;
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel-2);
+  overflow-x: auto;
+}
+
+.tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+  cursor: pointer;
+  height: 22px;
+  max-width: 300px;
+}
+
+.tab.active {
+  border-color: rgba(88, 166, 255, 0.55);
+  background: rgba(88, 166, 255, 0.12);
+}
+
+.tab-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 240px;
+}
+
+.tab-close {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+  font-size: 14px;
+}
+
+.tab-close:hover {
+  color: var(--text);
+}
+
 .main {
   flex: 1;
   display: grid;
   grid-template-columns: 1fr 360px;
   min-height: 0;
+}
+
+.main.sidebar-hidden {
+  grid-template-columns: 1fr;
+}
+
+.main.sidebar-hidden .sidebar {
+  display: none;
 }
 
 .canvas-wrap {
