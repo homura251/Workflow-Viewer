@@ -234,6 +234,27 @@ function resizeCanvasToContainer() {
 window.addEventListener('resize', resizeCanvasToContainer)
 resizeCanvasToContainer()
 
+// Trackpad-friendly zoom: LiteGraph uses wheelDeltaY/detail which can be missing on touchpads.
+canvasEl.addEventListener(
+  'wheel',
+  (event) => {
+    const dy = event.deltaY ?? 0
+    if (!dy) return
+
+    const step = 1.1
+    const scaleFactor = Math.pow(step, -dy / 100)
+    const nextScale = Math.min(4, Math.max(0.1, canvas.ds.scale * scaleFactor))
+
+    canvas.ds.changeScale(nextScale, [event.clientX, event.clientY])
+    graph.change()
+    canvas.draw(true, true)
+
+    event.preventDefault()
+    event.stopImmediatePropagation()
+  },
+  { capture: true, passive: false }
+)
+
 let spaceDown = false
 let panning = false
 let panStart: { x: number; y: number; offsetX: number; offsetY: number } | null = null
