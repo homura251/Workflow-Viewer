@@ -34,19 +34,19 @@ const mainLayoutEl = document.querySelector('.main') as HTMLElement
 type Rgb = { r: number; g: number; b: number }
 
 const BASE_TYPE_COLORS: Record<string, string> = {
-  MODEL: '#58a6ff',
-  CLIP: '#a371f7',
-  VAE: '#ff7b72',
-  IMAGE: '#56d364',
-  LATENT: '#d29922',
-  CONDITIONING: '#f85149',
-  MASK: '#79c0ff',
-  CONTROL_NET: '#db6d28',
-  INT: '#9cdcfe',
-  FLOAT: '#b5cea8',
-  STRING: '#ce9178',
-  BOOLEAN: '#4ec9b0',
-  ANY: '#c9d1d9'
+  MODEL: '#89b4fa',
+  CLIP: '#cba6f7',
+  VAE: '#f38ba8',
+  IMAGE: '#a6e3a1',
+  LATENT: '#f9e2af',
+  CONDITIONING: '#fab387',
+  MASK: '#74c7ec',
+  CONTROL_NET: '#eba0ac',
+  INT: '#89dceb',
+  FLOAT: '#94e2d5',
+  STRING: '#f5c2e7',
+  BOOLEAN: '#b4befe',
+  ANY: '#cdd6f4'
 }
 
 function clampByte(value: number) {
@@ -131,8 +131,8 @@ function stableTypeColor(type: string) {
 
   const hash = fnv1a32(canonical)
   const hue = hash % 360
-  const sat = 0.62
-  const light = 0.55
+  const sat = 0.46
+  const light = 0.52
   return rgbToHex(hslToRgb(hue, sat, light))
 }
 
@@ -147,7 +147,7 @@ function ensureTypeColors(type: string) {
     ;(canvas as any).default_connection_color_byType ??= {}
     ;(canvas as any).default_connection_color_byTypeOff ??= {}
     ;(canvas as any).default_connection_color_byType[key] = color
-    ;(canvas as any).default_connection_color_byTypeOff[key] = dimHex(color, 0.35)
+    ;(canvas as any).default_connection_color_byTypeOff[key] = dimHex(color, 0.45)
   }
 }
 
@@ -169,6 +169,7 @@ LiteGraph.NODE_DEFAULT_COLOR = '#2a2f3a'
 LiteGraph.NODE_DEFAULT_BGCOLOR = '#141821'
 LiteGraph.NODE_DEFAULT_BOXCOLOR = '#000'
 LiteGraph.NODE_TITLE_COLOR = '#d6d9e0'
+LiteGraph.NODE_TEXT_COLOR = 'rgba(230, 237, 243, 0.92)'
 LiteGraph.DEFAULT_SHADOW_COLOR = 'rgba(0,0,0,0.35)'
 LiteGraph.CANVAS_GRID_SIZE = 40
 LiteGraph.NODE_DEFAULT_SHAPE = 'card'
@@ -181,8 +182,55 @@ const canvas = new LGraphCanvas(canvasEl, graph)
 ;(canvas as any).connections_width = 3.5
 ;(canvas as any).use_gradients = true
 ;(canvas as any).render_canvas_border = false
-;(canvas as any).clear_background_color = '#0b0d12'
+;(canvas as any).clear_background_color = '#0f121a'
+;(canvas as any).title_text_font = '14px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif'
+;(canvas as any).inner_text_font = '12px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif'
 graph.start()
+
+function getEffectiveDpr() {
+  const raw = Number(window.devicePixelRatio || 1)
+  if (!Number.isFinite(raw) || raw <= 0) return 1
+  return Math.min(2, Math.max(1, raw))
+}
+
+function enableHiDpiCanvas(canvasInstance: LGraphCanvas) {
+  const anyCanvas = canvasInstance as any
+  if (anyCanvas.__viewerHiDpiInstalled) return
+  anyCanvas.__viewerHiDpiInstalled = true
+
+  const ds: any = canvasInstance.ds
+  if (typeof ds.computeVisibleArea === 'function') {
+    ds.computeVisibleArea = (viewport?: [number, number, number, number]) => {
+      const dpr = Number(anyCanvas.__viewerDpr || 1)
+      if (!ds.element) {
+        ds.visible_area[0] = ds.visible_area[1] = ds.visible_area[2] = ds.visible_area[3] = 0
+        return
+      }
+
+      const width = ds.element.width / dpr
+      const height = ds.element.height / dpr
+      const startx = -ds.offset[0] + (viewport ? viewport[0] / ds.scale : 0)
+      const starty = -ds.offset[1] + (viewport ? viewport[1] / ds.scale : 0)
+      const viewW = viewport ? viewport[2] : width
+      const viewH = viewport ? viewport[3] : height
+      const endx = startx + viewW / ds.scale
+      const endy = starty + viewH / ds.scale
+      ds.visible_area[0] = startx
+      ds.visible_area[1] = starty
+      ds.visible_area[2] = endx - startx
+      ds.visible_area[3] = endy - starty
+    }
+  }
+
+  ds.toCanvasContext = (ctx: CanvasRenderingContext2D) => {
+    const dpr = Number(anyCanvas.__viewerDpr || 1)
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    ctx.scale(ds.scale, ds.scale)
+    ctx.translate(ds.offset[0], ds.offset[1])
+  }
+}
+
+enableHiDpiCanvas(canvas)
 
 const GROUP_DRAG_HANDLE_HEIGHT = 28
 ;(graph as any).getGroupOnPos = (x: number, y: number) => {
@@ -706,7 +754,8 @@ function resizeCanvasToContainer() {
   const rect = dropTarget.getBoundingClientRect()
   const width = Math.max(1, Math.floor(rect.width))
   const height = Math.max(1, Math.floor(rect.height))
-  canvas.resize(width, height)
+  ;(canvas as any).__viewerDpr = getEffectiveDpr()
+  canvas.resize(Math.max(1, Math.floor(width * (canvas as any).__viewerDpr)), Math.max(1, Math.floor(height * (canvas as any).__viewerDpr)))
   canvas.draw(true, true)
 }
 
