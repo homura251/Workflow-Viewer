@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.15
+
+- Params: hide UI-only widget fields (e.g. LoadImage upload), keep only real values like `text:` / `ckpt_name:`.
+
 ## v0.1.13
 
 - Interaction: LMB pans only on empty space; overlay text selection never pans.
