@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.12
+
+- Interaction: restore LMB canvas panning; selecting overlay text won’t pan.
+
 ## v0.1.11
 
 - Interaction: prevent canvas panning while selecting overlay text (pan only via MMB or Space+LMB).

@@ -1117,7 +1117,7 @@ canvasEl.addEventListener(
 
 // LMB drag behavior:
 // - Drag node(s) only when the node is already selected and the drag starts from its title bar
-// - Canvas panning is only via MMB or Space+LMB (ComfyUI-like)
+// - Otherwise, drag pans the canvas (except when selecting text in the overlay)
 canvasEl.addEventListener(
   'pointerdown',
   (event) => {
@@ -1126,11 +1126,8 @@ canvasEl.addEventListener(
     if (activeDrag) return
 
     const node = getNodeUnderPointer(event)
-    if (!node || !isNodeSelected(node) || !isInNodeTitleBar(node, event)) {
-      dragCandidate = null
-      return
-    }
-    dragCandidate = { mode: 'node', pointerId: event.pointerId, startX: event.clientX, startY: event.clientY }
+    const mode: 'pan' | 'node' = node && isNodeSelected(node) && isInNodeTitleBar(node, event) ? 'node' : 'pan'
+    dragCandidate = { mode, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY }
   },
   true
 )
@@ -1146,7 +1143,10 @@ canvasEl.addEventListener(
     const dy = event.clientY - dragCandidate.startY
     if (dx * dx + dy * dy <= DRAG_THRESHOLD_SQ) return
 
-    beginNodeDrag(event.pointerId, dragCandidate.startX, dragCandidate.startY)
+    if (overlayInteracting) return
+
+    if (dragCandidate.mode === 'node') beginNodeDrag(event.pointerId, dragCandidate.startX, dragCandidate.startY)
+    else beginPan(event.pointerId, dragCandidate.startX, dragCandidate.startY)
 
     canvasEl.setPointerCapture(event.pointerId)
     dragCandidate = null
