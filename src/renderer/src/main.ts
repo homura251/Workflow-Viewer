@@ -581,9 +581,11 @@ function renderNodeOverlay(node: any) {
   nodeOverlayEl.style.width = `${layout.boxWidth}px`
   nodeOverlayEl.style.height = `${Math.max(0, layout.contentHeight)}px`
 
-  const inlineTextTop = PARAM_WIDGET_HEIGHT * 0.7 - PARAM_FONT_SIZE
-  const multilineLabelTop = PARAM_LABEL_OFFSET_Y - PARAM_FONT_SIZE
-  const multilineValueTop = PARAM_TEXT_OFFSET_Y - PARAM_FONT_SIZE
+  if (overlayMeasureCtx) overlayMeasureCtx.font = PARAM_FONT
+  const measuredAscent = overlayMeasureCtx?.measureText('Mg')?.actualBoundingBoxAscent
+  const fontAscent = typeof measuredAscent === 'number' && measuredAscent > 0 ? measuredAscent : PARAM_FONT_SIZE
+  const inlineTextTop = PARAM_WIDGET_HEIGHT * 0.7 - fontAscent
+  const multilineLabelTop = PARAM_LABEL_OFFSET_Y - fontAscent
 
   for (const item of layout.items) {
     const itemEl = document.createElement('div')
@@ -600,13 +602,15 @@ function renderNodeOverlay(node: any) {
     itemEl.append(labelEl)
 
     if (item.kind === 'multiline') {
-      const valueEl = document.createElement('div')
-      valueEl.className = 'node-overlay-multiline'
-      valueEl.textContent = item.lines.join('\n')
-      valueEl.style.top = `${multilineValueTop}px`
-      valueEl.style.left = `${PARAM_TEXT_PADDING}px`
-      valueEl.style.right = `${PARAM_TEXT_PADDING}px`
-      itemEl.append(valueEl)
+      for (let i = 0; i < item.lines.length; i++) {
+        const lineEl = document.createElement('span')
+        lineEl.className = 'node-overlay-multiline-line'
+        lineEl.textContent = item.lines[i] ?? ''
+        lineEl.style.left = `${PARAM_TEXT_PADDING}px`
+        lineEl.style.right = `${PARAM_TEXT_PADDING}px`
+        lineEl.style.top = `${PARAM_TEXT_OFFSET_Y + i * PARAM_LINE_HEIGHT - fontAscent}px`
+        itemEl.append(lineEl)
+      }
     } else {
       const valueEl = document.createElement('span')
       valueEl.className = 'node-overlay-value'
@@ -636,6 +640,7 @@ function installParamOverlay(node: any) {
 
     const params: ViewerParamItem[] = this.__viewerParams ?? []
     if (!params.length) return
+    const suppressText = nodeOverlayVisible && selectedNode === this
 
     const titleHeight = (LiteGraph as any).NODE_TITLE_HEIGHT ?? 24
     const slotHeight = (LiteGraph as any).NODE_SLOT_HEIGHT ?? 20
@@ -671,23 +676,28 @@ function installParamOverlay(node: any) {
       ctx.stroke()
 
       if (item.kind === 'multiline') {
-        ctx.fillStyle = 'rgba(180,190,205,0.92)'
-        ctx.fillText(label, startX + PARAM_TEXT_PADDING, y + PARAM_LABEL_OFFSET_Y)
+        if (!suppressText) {
+          ctx.fillStyle = 'rgba(180,190,205,0.92)'
+          ctx.fillText(label, startX + PARAM_TEXT_PADDING, y + PARAM_LABEL_OFFSET_Y)
 
-        ctx.fillStyle = 'rgba(230,237,243,0.92)'
-        const textY = y + PARAM_TEXT_OFFSET_Y
-        const maxTextWidth = Math.max(10, boxWidth - PARAM_TEXT_PADDING * 2)
-        const wrapped = wrapTextByWidth(ctx, rawText, maxTextWidth).slice(0, MULTILINE_PREVIEW_LINES)
-        for (let i = 0; i < wrapped.length; i++) ctx.fillText(wrapped[i]!, startX + PARAM_TEXT_PADDING, textY + i * PARAM_LINE_HEIGHT)
+          ctx.fillStyle = 'rgba(230,237,243,0.92)'
+          const textY = y + PARAM_TEXT_OFFSET_Y
+          const maxTextWidth = Math.max(10, boxWidth - PARAM_TEXT_PADDING * 2)
+          const wrapped = wrapTextByWidth(ctx, rawText, maxTextWidth).slice(0, MULTILINE_PREVIEW_LINES)
+          for (let i = 0; i < wrapped.length; i++)
+            ctx.fillText(wrapped[i]!, startX + PARAM_TEXT_PADDING, textY + i * PARAM_LINE_HEIGHT)
+        }
       } else {
-        const baselineY = y + PARAM_WIDGET_HEIGHT * 0.7
-        ctx.fillStyle = 'rgba(180,190,205,0.92)'
-        ctx.fillText(label, startX + PARAM_TEXT_PADDING, baselineY)
+        if (!suppressText) {
+          const baselineY = y + PARAM_WIDGET_HEIGHT * 0.7
+          ctx.fillStyle = 'rgba(180,190,205,0.92)'
+          ctx.fillText(label, startX + PARAM_TEXT_PADDING, baselineY)
 
-        ctx.fillStyle = 'rgba(230,237,243,0.92)'
-        ctx.textAlign = 'right'
-        ctx.fillText(String(rawText), startX + boxWidth - PARAM_TEXT_PADDING, baselineY)
-        ctx.textAlign = 'left'
+          ctx.fillStyle = 'rgba(230,237,243,0.92)'
+          ctx.textAlign = 'right'
+          ctx.fillText(String(rawText), startX + boxWidth - PARAM_TEXT_PADDING, baselineY)
+          ctx.textAlign = 'left'
+        }
       }
 
       y += boxHeight + PARAM_BOX_GAP
@@ -748,6 +758,12 @@ function setNodeOverlayVisible(visible: boolean) {
   nodeOverlayEl.setAttribute('aria-hidden', visible ? 'false' : 'true')
   if (visible) startOverlaySync()
   else stopOverlaySync()
+  try {
+    ;(canvas as any).setDirty?.(true, true)
+    canvas.draw(true, true)
+  } catch {
+    // ignore
+  }
 }
 
 function computeOverlayLayout(node: any) {
@@ -775,9 +791,11 @@ function updateNodeOverlay() {
   if (!changed) return
   lastOverlayLayout = layout
 
+  nodeOverlayEl.style.left = `${layout.left}px`
+  nodeOverlayEl.style.top = `${layout.top}px`
   nodeOverlayEl.style.width = `${layout.width}px`
   nodeOverlayEl.style.height = `${layout.height}px`
-  nodeOverlayEl.style.transform = `translate(${layout.left}px, ${layout.top}px) scale(${layout.scale})`
+  nodeOverlayEl.style.transform = `scale(${layout.scale})`
 }
 
 function startOverlaySync() {

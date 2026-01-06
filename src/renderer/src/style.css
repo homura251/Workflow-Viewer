@@ -172,7 +172,7 @@ body {
 .node-overlay-value,
 .node-overlay-multiline {
   position: absolute;
-  line-height: 16px;
+  line-height: 1;
 }
 
 .node-overlay-label {
@@ -197,6 +197,16 @@ body {
   right: 10px;
   white-space: pre;
   word-break: break-word;
+}
+
+.node-overlay-multiline-line {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  white-space: pre;
+  line-height: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .hint {
