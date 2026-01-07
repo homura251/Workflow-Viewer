@@ -1323,8 +1323,7 @@ canvasEl.addEventListener(
 
 // LMB drag behavior:
 // - Drag node(s) only when the node is already selected and the drag starts from its title bar
-// - Dragging empty space pans the canvas
-// - Dragging on node body does not pan (so it won't fight with text overlay)
+// - Dragging anywhere else pans the canvas (including on nodes/groups)
 canvasEl.addEventListener(
   'pointerdown',
   (event) => {
@@ -1333,10 +1332,9 @@ canvasEl.addEventListener(
     if (activeDrag) return
 
     const node = getNodeUnderPointer(event)
-    const group = node ? null : getGroupUnderPointer(event)
-    const mode: 'pan' | 'node' | null =
-      node && isNodeSelected(node) && isInNodeTitleBar(node, event) ? 'node' : !node && !group ? 'pan' : null
-    dragCandidate = mode ? { mode, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY } : null
+    const mode: 'pan' | 'node' =
+      node && isNodeSelected(node) && isInNodeTitleBar(node, event) ? 'node' : 'pan'
+    dragCandidate = { mode, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY }
   },
   true
 )
